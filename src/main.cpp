@@ -301,7 +301,7 @@ static int run(const int sleep_interval)
 			return 1;
 		}
 	}
-	const std::string riot_token = read_first_line(riot_api_key_file_name);
+	std::string riot_token = read_first_line(riot_api_key_file_name);
 	if (riot_token.size() <= 1) {
 		std::cerr << "Invalid riot token" << std::endl;
 		return 1;
@@ -329,6 +329,12 @@ static int run(const int sleep_interval)
 				LOG << "Config loaded successfully" << std::endl;
 			} else {
 				LOG << "Config failed to load -- still using old config" << std::endl;
+			}
+			const std::string new_riot_token = read_first_line(riot_api_key_file_name);
+			if (new_riot_token.size() <= 1) {
+				LOG << "Invalid riot token... still using old one" << std::endl;
+			} else {
+				riot_token = std::move(new_riot_token);
 			}
 		}
 		for (const auto &rule : rules) {
