@@ -1,0 +1,8 @@
+league_match_alert
+config.txt
+*.secret
+*.info
+*.out
+*.log
+obj/
+
