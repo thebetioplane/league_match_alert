@@ -27,6 +27,8 @@ Webhook Defs
 # Webhook name|Webhook username|Webhook route
 My Webhook|League Alert|/api/webhooks/33232/defdfdfskdjf
 Other Webhook|Game Alert|/api/webhooks/1234/abcsdkjfkj
+# "Error Report" is a special name that indicates that the program will send errors to it
+Error Report|League API Error|/api/webhooks/23434/dfsdfsdfs
 
 Player Defs
 # Note that the nickname you put here will be used in the alert message

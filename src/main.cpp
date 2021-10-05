@@ -38,7 +38,7 @@
 #define RATIO(a, b) (static_cast<float>(a) / static_cast<float>(b))
 
 extern std::map<int, std::string> queue_name_map;
-
+static std::pair<std::string, std::string> error_report_webhook;
 static std::atomic<bool> needs_config_reload(true);
 
 class ConfigRule {
@@ -197,6 +197,11 @@ static bool get_game_info(const std::string &riot_token, const std::string &puui
 		const int status = response.getStatus();
 		if (status / 100 != 2) {
 			LOG << "I tried to GET match info by gameid and got response " << status << std::endl;
+			if (! error_report_webhook.second.empty()) {
+				std::ostringstream ss;
+				logtimestamp(ss) << "GET `" << route.str() << "`\n resulted in **" << status << "**";
+				send_to_webhook(error_report_webhook.second, error_report_webhook.first, ss.str());
+			}
 			return false;
 		}
 		Parser parser;
@@ -247,6 +252,11 @@ static std::vector<std::string> get_games_since(const std::string &riot_token, c
 		const int status = response.getStatus();
 		if (status / 100 != 2) {
 			LOG << "I tried to GET matches by puuid and got response " << status << std::endl;
+			if (! error_report_webhook.second.empty()) {
+				std::ostringstream ss;
+				logtimestamp(ss) << "GET `" << route.str() << "`\n resulted in **" << status << "**";
+				send_to_webhook(error_report_webhook.second, error_report_webhook.first, ss.str());
+			}
 			return {};
 		}
 		Parser parser;
@@ -461,6 +471,10 @@ static bool load_config(std::vector<ConfigRule> &old_rules)
 					LOG << "Item in webhook def section has size " << res.size() << " but should be 3" << std::endl;
 					return false;
 				}
+				if (res[2][0] != '/') {
+					LOG << "webhook route does not start with /" << std::endl;
+					return false;
+				}
 				webhook_map.emplace(res[0], std::make_pair(res[1], res[2]));
 				break;
 			}
@@ -517,6 +531,12 @@ static bool load_config(std::vector<ConfigRule> &old_rules)
 			}
 		}
 	}
+	{
+		auto iter = webhook_map.find("Error Report");
+		if (iter != webhook_map.end()) {
+			error_report_webhook = iter->second;
+		}
+	}
 	for (auto rule : rules) {
 		if (rule.player_name.empty()) {
 			LOG << "player name is empty" << std::endl;
@@ -528,10 +548,6 @@ static bool load_config(std::vector<ConfigRule> &old_rules)
 		}
 		if (rule.webhook_route.empty()) {
 			LOG << "webhook route is empty" << std::endl;
-			return false;
-		}
-		if (rule.webhook_route[0] != '/') {
-			LOG << "webhook route does not start with /" << std::endl;
 			return false;
 		}
 	}
