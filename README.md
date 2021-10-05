@@ -4,7 +4,16 @@ and above a certain death count.
 
 **Compiling**
 
-Use the makefile. Requires libpoco and POSIX
+First run (clean creates obj directory):
+```
+$ make clean all
+```
+Subsequent runs
+```
+$ make
+```
+
+Requires libpoco and POSIX.
 
 **Running**
 

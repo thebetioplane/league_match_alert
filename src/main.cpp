@@ -60,6 +60,7 @@ public:
 };
 
 static bool load_config(std::vector<ConfigRule> &old_rules);
+static int send_to_webhook(const std::string &webhook_route, const std::string &username, const std::string &msg, bool log_if_error);
 
 static const char *two_char_pad(int n)
 {
@@ -106,7 +107,25 @@ static void sleep_ms(int ms)
 	}
 }
 
-static int send_to_webhook(const std::string &webhook_route, const std::string &username, const std::string &msg)
+static void log_http_error(const std::string &method, const std::string &route, const int status)
+{
+	if (! error_report_webhook.second.empty()) {
+		std::ostringstream ss;
+		logtimestamp(ss) << method << " `" << route << "`\n resulted in **" << status << "**";
+		send_to_webhook(error_report_webhook.second, error_report_webhook.first, ss.str(), false);
+		if (status == 403) {
+			std::ostringstream ss2;
+			logtimestamp(ss2) << "Exiting due to 403. You must update the token.";
+			send_to_webhook(error_report_webhook.second, error_report_webhook.first, ss2.str(), false);
+		}
+	}
+	if (status == 403) {
+		LOG << "Calling std::exit(403)" << std::endl;
+		std::exit(403);
+	}
+}
+
+static int send_to_webhook(const std::string &webhook_route, const std::string &username, const std::string &msg, bool log_if_error)
 {
 	constexpr int default_sleep_amt = 1000;
 	try {
@@ -132,7 +151,10 @@ static int send_to_webhook(const std::string &webhook_route, const std::string &
 		const int status = response.getStatus();
 		if (status / 100 != 2) {
 			LOG << "I tried to POST to webhook and got response " << status << std::endl;
-			trace(json);
+			//trace(json);
+			if (log_if_error) {
+				log_http_error("POST", "webhook", status);
+			}
 		}
 		const int remaining = std::stoi(response.get("x-ratelimit-remaining"));
 		if (remaining == 0) {
@@ -172,7 +194,7 @@ static void dispatch_if_rule_matches(const GameInfo &game_info, const ConfigRule
 	ss << " on " << game_info.champion_name;
 	ss << " while playing ";
 	ss << get_queue_name(game_info.queue_id);
-	send_to_webhook(rule.webhook_route, rule.webhook_username, ss.str());
+	send_to_webhook(rule.webhook_route, rule.webhook_username, ss.str(), true);
 }
 
 static bool get_game_info(const std::string &riot_token, const std::string &puuid, const std::string &game_id, GameInfo &game_info)
@@ -197,11 +219,7 @@ static bool get_game_info(const std::string &riot_token, const std::string &puui
 		const int status = response.getStatus();
 		if (status / 100 != 2) {
 			LOG << "I tried to GET match info by gameid and got response " << status << std::endl;
-			if (! error_report_webhook.second.empty()) {
-				std::ostringstream ss;
-				logtimestamp(ss) << "GET `" << route.str() << "`\n resulted in **" << status << "**";
-				send_to_webhook(error_report_webhook.second, error_report_webhook.first, ss.str());
-			}
+			log_http_error("GET", route.str(), status);
 			return false;
 		}
 		Parser parser;
@@ -252,11 +270,7 @@ static std::vector<std::string> get_games_since(const std::string &riot_token, c
 		const int status = response.getStatus();
 		if (status / 100 != 2) {
 			LOG << "I tried to GET matches by puuid and got response " << status << std::endl;
-			if (! error_report_webhook.second.empty()) {
-				std::ostringstream ss;
-				logtimestamp(ss) << "GET `" << route.str() << "`\n resulted in **" << status << "**";
-				send_to_webhook(error_report_webhook.second, error_report_webhook.first, ss.str());
-			}
+			log_http_error("GET", route.str(), status);
 			return {};
 		}
 		Parser parser;
