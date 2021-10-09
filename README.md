@@ -47,8 +47,13 @@ Player Two|dsfkdfjkdjdkfj
 Player Three|skdjfksdjfkdsfjdskfdjfkdjf
 
 Rule Defs
-# Nickname|Min death|Max KD|Webhook name
-Player One|5|0.2|My Webhook
-Player Two|7|0.3|Other Webhook
-Player Three|10|0.1|Other Webhook
+# Nickname|Min death|Max KD Numerator|Max KD Denominator|Webhook name
+Player One|6|1|5|My Webhook
+Player Two|7|3|10|Other Webhook
+Player Three|10|1|10|Other Webhook
 ```
+
+For the config above:
+- Player One has their threshold set to 1/5 = 0.2 KD when over 6 deaths
+- Player Two has their threshold set to 3/10 = 0.3 KD when over 7 deaths
+- Player Three has their threshold set to 1/10 = 0.1 KD when over 10 deaths
