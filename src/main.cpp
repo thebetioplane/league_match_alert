@@ -118,6 +118,7 @@ static void sleep_ms(int ms)
 
 static void log_http_error(const std::string &method, const std::string &route, const int status)
 {
+	LOG << status << "/" << method << "/" << route << std::endl;
 	if (! error_report_webhook.second.empty()) {
 		std::ostringstream ss;
 		logtimestamp(ss) << method << " `" << route << "`\n resulted in **" << status << "**";
