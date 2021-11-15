@@ -30,6 +30,8 @@
 // request per 2 mins
 #define rate_limit_120 100
 //#define SHOW_ASSISTS
+#define sleep_amt_1 1500
+#define sleep_amt_120 130000
 
 #define riot_api_key_file_name "riot_api_key.secret"
 #define pid_file_name "pid.info"
@@ -66,10 +68,13 @@ public:
 #ifdef SHOW_ASSISTS
 	int assists;
 #endif
+	int duration;
+	time_t time_end;
+	std::string win_result;
 };
 
 static bool load_config(std::vector<ConfigRule> &old_rules);
-static int send_to_webhook(const std::string &webhook_route, const std::string &username, const std::string &msg, bool log_if_error);
+static int send_to_webhook(const std::string &webhook_route, const std::string &username, const std::string &msg, const std::vector<std::pair<std::string, std::string>> embeds, bool log_if_error);
 
 static const char *two_char_pad(int n)
 {
@@ -118,15 +123,19 @@ static void sleep_ms(int ms)
 
 static void log_http_error(const std::string &method, const std::string &route, const int status)
 {
-	LOG << status << "/" << method << "/" << route << std::endl;
+	LOG << status << "|" << method << "|" << route << std::endl;
 	if (! error_report_webhook.second.empty()) {
 		std::ostringstream ss;
-		logtimestamp(ss) << method << " `" << route << "`\n resulted in **" << status << "**";
-		send_to_webhook(error_report_webhook.second, error_report_webhook.first, ss.str(), false);
+		logtimestamp(ss) << "Got HTTP error";
+		send_to_webhook(error_report_webhook.second, error_report_webhook.first, ss.str(), {
+			{ "Status", std::to_string(status) },
+			{ "Method", method },
+			{ "Route", route },
+		}, false);
 		if (status == 403) {
 			std::ostringstream ss2;
 			logtimestamp(ss2) << "Exiting due to 403. You must update the token.";
-			send_to_webhook(error_report_webhook.second, error_report_webhook.first, ss2.str(), false);
+			send_to_webhook(error_report_webhook.second, error_report_webhook.first, ss2.str(), {}, false);
 		}
 	}
 	if (status == 403) {
@@ -141,11 +150,20 @@ static void log_error_generic(const std::string &msg)
 	if (! error_report_webhook.second.empty()) {
 		std::ostringstream ss;
 		logtimestamp(ss) << msg;
-		send_to_webhook(error_report_webhook.second, error_report_webhook.first, ss.str(), false);
+		send_to_webhook(error_report_webhook.second, error_report_webhook.first, ss.str(), {}, false);
 	}
 }
 
-static int send_to_webhook(const std::string &webhook_route, const std::string &username, const std::string &msg, bool log_if_error)
+static void format_pair(const std::pair<std::string, std::string> &p, std::ostringstream &json_ss)
+{
+	json_ss << "{\"name\":";
+	Poco::JSON::Stringifier::formatString(p.first, json_ss);
+	json_ss << ",\"value\":";
+	Poco::JSON::Stringifier::formatString(p.second, json_ss);
+	json_ss << ",\"inline\":true}";
+}
+
+static int send_to_webhook(const std::string &webhook_route, const std::string &username, const std::string &msg, const std::vector<std::pair<std::string, std::string>> embeds, bool log_if_error)
 {
 	constexpr int default_sleep_amt = 1000;
 	try {
@@ -162,7 +180,17 @@ static int send_to_webhook(const std::string &webhook_route, const std::string &
 		Poco::JSON::Stringifier::formatString(msg, json_ss);
 		json_ss << ",\"username\":";
 		Poco::JSON::Stringifier::formatString(username, json_ss);
-		json_ss << ",\"allowed_mentions\":{\"parse\":[]}}";
+		json_ss << ",";
+		if (! embeds.empty()) {
+			json_ss << "\"embeds\":[{\"fields\":[";
+			format_pair(embeds[0], json_ss);
+			for (size_t i = 1; i < embeds.size(); ++i) {
+				json_ss << ',';
+				format_pair(embeds[i], json_ss);
+			}
+			json_ss << "]}],";
+		}
+		json_ss << "\"allowed_mentions\":{\"parse\":[]}}";
 		const std::string &json = json_ss.str();
 		request.setContentLength(json.size());
 		cs.sendRequest(request) << json;
@@ -221,8 +249,16 @@ static void dispatch_if_rule_matches(const GameInfo &game_info, const ConfigRule
 #endif
 	ss << " on " << game_info.champion_name;
 	ss << " while playing ";
-	ss << get_queue_name(game_info.queue_id);
-	send_to_webhook(rule.webhook_route, rule.webhook_username, ss.str(), true);
+	ss << get_queue_name(game_info.queue_id);;
+	std::ostringstream played_on_ss;
+	played_on_ss << "<t:" << (game_info.time_end / 1000) << ">";
+	std::ostringstream duration_ss;
+	duration_ss << (game_info.duration / 60) << ":" << two_char_pad(game_info.duration % 60);
+	send_to_webhook(rule.webhook_route, rule.webhook_username, ss.str(), {
+		{ "Played on", played_on_ss.str() },
+		{ "Duration", duration_ss.str() },
+		{ "Result", game_info.win_result }
+	}, true);
 }
 
 static bool get_game_info(const std::string &riot_token, const std::string &puuid, const std::string &game_id, GameInfo &game_info)
@@ -255,6 +291,18 @@ static bool get_game_info(const std::string &riot_token, const std::string &puui
 		Object::Ptr obj = result.extract<Object::Ptr>();
 		auto info_obj = obj->getObject("info");
 		game_info.queue_id = info_obj->getValue<int>("queueId");
+		game_info.duration = info_obj->getValue<time_t>("gameDuration");
+		game_info.time_end = info_obj->getValue<time_t>("gameCreation") + game_info.duration;
+		int num_winning_teams = 0;
+		int winning_team = 0;
+		Array::Ptr teams = info_obj->getArray("teams");
+		for (auto iter = teams->begin(); iter != teams->end(); ++iter) {
+			Object::Ptr p = iter->extract<Object::Ptr>();
+			if (p->getValue<bool>("win")) {
+				winning_team = p->getValue<int>("teamId");
+				++num_winning_teams;
+			}
+		}
 		Array::Ptr players = info_obj->getArray("participants");
 		for (auto iter = players->begin(); iter != players->end(); ++iter) {
 			Object::Ptr p = iter->extract<Object::Ptr>();
@@ -265,6 +313,12 @@ static bool get_game_info(const std::string &riot_token, const std::string &puui
 #ifdef SHOW_ASSISTS
 				game_info.assists = p->getValue<int>("assists");
 #endif
+				const int team_id = p->getValue<int>("teamId");
+				if (num_winning_teams == 1) {
+					game_info.win_result = (winning_team == team_id) ? "WIN" : "LOSS";
+				} else {
+					game_info.win_result = "-";
+				}
 				return true;
 			}
 		}
@@ -343,7 +397,7 @@ static bool process_rules(const std::string &riot_token, const std::vector<Confi
 		}
 		--requests_left;
 		if (requests_left == 0) {
-			sleep_ms(1000);
+			sleep_ms(sleep_amt_1);
 			requests_left = rate_limit_1;
 		}
 	}
