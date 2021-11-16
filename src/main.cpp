@@ -251,7 +251,7 @@ static void dispatch_if_rule_matches(const GameInfo &game_info, const ConfigRule
 	ss << " while playing ";
 	ss << get_queue_name(game_info.queue_id);;
 	std::ostringstream played_on_ss;
-	played_on_ss << "<t:" << (game_info.time_end / 1000) << ">";
+	played_on_ss << "<t:" << game_info.time_end << ">";
 	std::ostringstream duration_ss;
 	duration_ss << (game_info.duration / 60) << ":" << two_char_pad(game_info.duration % 60);
 	send_to_webhook(rule.webhook_route, rule.webhook_username, ss.str(), {
@@ -292,7 +292,8 @@ static bool get_game_info(const std::string &riot_token, const std::string &puui
 		auto info_obj = obj->getObject("info");
 		game_info.queue_id = info_obj->getValue<int>("queueId");
 		game_info.duration = info_obj->getValue<time_t>("gameDuration");
-		game_info.time_end = info_obj->getValue<time_t>("gameCreation") + game_info.duration;
+		const time_t game_start = info_obj->getValue<time_t>("gameCreation") / 1000;
+		game_info.time_end = game_start + game_info.duration;
 		int num_winning_teams = 0;
 		int winning_team = 0;
 		Array::Ptr teams = info_obj->getArray("teams");
