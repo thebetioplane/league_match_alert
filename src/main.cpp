@@ -23,6 +23,7 @@
 #include <errno.h>
 #include <atomic>
 #include <utility>
+#include <algorithm>
 
 #define riot_endpoint "americas.api.riotgames.com"
 // requests per second
@@ -30,6 +31,7 @@
 // request per 2 mins
 #define rate_limit_120 100
 //#define SHOW_ASSISTS
+//#define LOG_SLEEPS
 #define sleep_amt_1 1500
 #define sleep_amt_120 130000
 
@@ -37,9 +39,6 @@
 #define pid_file_name "pid.info"
 #define config_file_name "config.txt"
 #define timestamp_file_name "last_timestamp.info"
-
-#define TRACE (std::cout << "[line " << __LINE__ << "] ")
-#define trace(what) (TRACE << #what " = " << (what) << std::endl)
 
 #define UNUSED __attribute__((unused))
 #define LOG logtimestamp(std::cout)
@@ -73,8 +72,27 @@ public:
 	std::string win_result;
 };
 
+static void sleep_ms(int ms);
 static bool load_config(std::vector<ConfigRule> &old_rules);
-static int send_to_webhook(const std::string &webhook_route, const std::string &username, const std::string &msg, const std::vector<std::pair<std::string, std::string>> embeds, bool log_if_error);
+static void send_to_webhook(const std::string &webhook_route, const std::string &username, const std::string &msg, const std::vector<std::pair<std::string, std::string>> embeds, bool log_if_error);
+
+// Once a rate limit is exhausted it sleeps for that amount
+class RateCounter {
+public:
+	RateCounter(int l_max_amt, int l_sleep_amt)
+		: max_amt(l_max_amt), sleep_amt(l_sleep_amt), current_value(l_max_amt) {}
+	void operator--() {
+		--current_value;
+		if (current_value <= 0) {
+			current_value = max_amt;
+			sleep_ms(sleep_amt);
+		}
+	}
+private:
+	const int max_amt;
+	const int sleep_amt;
+	int current_value;
+};
 
 static const char *two_char_pad(int n)
 {
@@ -107,6 +125,9 @@ static std::string read_first_line(const char *fname)
 // It is written this way so the sleep resumes where it left off after a signal
 static void sleep_ms(int ms)
 {
+#ifdef LOG_SLEEPS
+	std::cout << "Sleeping for " << ms << " ms" << std::endl;
+#endif
 	struct timespec req;
 	req.tv_sec = ms / 1000;
 	req.tv_nsec = (ms % 1000) * 1000000L;
@@ -163,7 +184,7 @@ static void format_pair(const std::pair<std::string, std::string> &p, std::ostri
 	json_ss << ",\"inline\":true}";
 }
 
-static int send_to_webhook(const std::string &webhook_route, const std::string &username, const std::string &msg, const std::vector<std::pair<std::string, std::string>> embeds, bool log_if_error)
+static void send_to_webhook(const std::string &webhook_route, const std::string &username, const std::string &msg, const std::vector<std::pair<std::string, std::string>> embeds, bool log_if_error)
 {
 	constexpr int default_sleep_amt = 1000;
 	try {
@@ -208,16 +229,15 @@ static int send_to_webhook(const std::string &webhook_route, const std::string &
 		if (remaining == 0) {
 			double after = std::stod(response.get("x-ratelimit-reset-after"));
 			after = std::ceil(after * 1000);
-			return static_cast<int>(after);
-		} else {
-			return 0;
+			sleep_ms(static_cast<int>(after));
 		}
+		return;
 	} catch (std::invalid_argument &e) {
 		LOG << "exception while sending message: " << e.what() << std::endl;
 	} catch (Poco::Exception &e) {
 		LOG << "exception while sending message: " << e.displayText() << std::endl;
 	}
-	return default_sleep_amt;
+	sleep_ms(default_sleep_amt);
 }
 
 static std::string get_queue_name(int queue_id)
@@ -233,14 +253,19 @@ static int compare_ratio(int n0, int d0, int n1, int d1)
 	return n0*d1 - d0*n1;
 }
 
-static void dispatch_if_rule_matches(const GameInfo &game_info, const ConfigRule &rule)
+static bool does_rule_match(const GameInfo &game_info, const ConfigRule &rule)
 {
 	if (game_info.deaths < rule.min_death) {
-		return;
+		return false;
 	}
 	if (compare_ratio(game_info.kills, game_info.deaths, rule.max_kd_k, rule.max_kd_d) > 0) {
-		return;
+		return false;
 	}
+	return true;
+}
+
+static void dispatch_webhook(const GameInfo &game_info, const ConfigRule &rule)
+{
 	std::ostringstream ss;
 	ss << rule.player_name;
 	ss << " went **" << game_info.kills << "/" << game_info.deaths << "**";
@@ -377,30 +402,39 @@ static bool get_games_since(const std::string &riot_token, const std::string &pu
 static bool process_rules(const std::string &riot_token, const std::vector<ConfigRule> &rules, const time_t last_update)
 {
 	std::vector<std::pair<int, std::string>> matches_to_search;
+	RateCounter r120(rate_limit_120, sleep_amt_120);
+	RateCounter r1(rate_limit_1, sleep_amt_1);
 	for (size_t i = 0; i < rules.size(); ++i) {
 		if (! get_games_since(riot_token, rules[i].puuid, last_update, i, matches_to_search)) {
 			return false;
 		}
+		--r120;
+		--r1;
 	}
-	const int requests_left_120 = rate_limit_120 - rules.size();
-	if (static_cast<int>(matches_to_search.size()) > requests_left_120) {
-		std::ostringstream ss;
-		ss << "Too many game ids returned. Got " << matches_to_search.size() << " but I only have " << requests_left_120 << " requests left for the next 120 seconds.";
-		log_error_generic(ss.str());
-		return false;
-	}
-	int requests_left = rate_limit_1 - rules.size();
+	using GameInfoAndRule = std::pair<GameInfo, int>;
+	std::vector<std::pair<GameInfo, int>> games_to_dispatch;
 	for (const auto &matches : matches_to_search) {
 		const ConfigRule &rule = rules[matches.first];
 		GameInfo game_info;
 		if (get_game_info(riot_token, rule.puuid, matches.second, game_info)) {
-			dispatch_if_rule_matches(game_info, rule);
+			if (does_rule_match(game_info, rule)) {
+				games_to_dispatch.emplace_back(std::make_pair(game_info, matches.first));
+			}
+		} else {
+			return false;
 		}
-		--requests_left;
-		if (requests_left == 0) {
-			sleep_ms(sleep_amt_1);
-			requests_left = rate_limit_1;
-		}
+		--r120;
+		--r1;
+	}
+	if (games_to_dispatch.size() > 1) {
+		// sort them in chronological order if there is more than one
+		std::sort(games_to_dispatch.begin(), games_to_dispatch.end(), [](const GameInfoAndRule &lhs, const GameInfoAndRule &rhs)
+		{
+			return lhs.first.time_end < rhs.first.time_end;
+		});
+	}
+	for (const auto &game_info_and_rule : games_to_dispatch) {
+		dispatch_webhook(game_info_and_rule.first, rules[game_info_and_rule.second]);
 	}
 	return true;
 }
@@ -467,6 +501,8 @@ static int run(const int sleep_interval)
 			last_update = now;
 			std::ofstream f(timestamp_file_name);
 			f << last_update << std::endl;
+		} else {
+			log_error_generic("Did not process rules");
 		}
 		sleep_ms(sleep_interval);
 	}
@@ -498,11 +534,8 @@ int main(int argc, char **argv)
 			return 1;
 		}
 		const int res = kill(target_pid, (arg == "stop") ? SIGTERM : SIGHUP);
-		if (res) {
-			perror("kill");
-			return 1;
-		}
-		return 0;
+		perror("kill");
+		return res;
 	} else if (arg == "validate" || arg == "dump_rules") {
 		std::vector<ConfigRule> rules;
 		if (load_config(rules)) {
@@ -595,7 +628,7 @@ static bool load_config(std::vector<ConfigRule> &old_rules)
 			switch (section) {
 			case FileSection::None:
 				LOG << "Unexpected line outside of section" << std::endl;
-				trace(line);
+				std::cout << "Line was \"" << line << "\"" << std::endl;
 				return false;
 			case FileSection::WebhookDefs: {
 				const auto res = pipe_split(line);
