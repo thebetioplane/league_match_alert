@@ -25,7 +25,8 @@ program should wake up and query.
 The program catches the HUP signal so you can run it in the bg like this and it will stay running
 once you close your shell (like a daemon).
 
-In order to quit you can run `./league_match_alert stop` to send a signal to the running process
+In order to quit you can run `./league_match_alert stop` to send a signal to the running process.
+This will use whatever pid is contained in "pid.info", but it's updated automatically.
 
 Sample config.txt:
 
@@ -57,3 +58,5 @@ For the config above:
 - Player One has their threshold set to 1/5 = 0.2 KD when over 6 deaths
 - Player Two has their threshold set to 3/10 = 0.3 KD when over 7 deaths
 - Player Three has their threshold set to 1/10 = 0.1 KD when over 10 deaths
+
+Additional commpile-time configs can be found in src/config.hpp

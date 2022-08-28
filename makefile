@@ -17,4 +17,4 @@ obj/%.o: src/%.cpp
 clean:
 	rm -f $(TARGET) && rm -rf obj && mkdir obj
 
-
+obj/main.o: src/main.cpp src/config.hpp

@@ -25,20 +25,7 @@
 #include <utility>
 #include <algorithm>
 
-#define riot_endpoint "americas.api.riotgames.com"
-// requests per second
-#define rate_limit_1 20
-// request per 2 mins
-#define rate_limit_120 100
-//#define SHOW_ASSISTS
-//#define LOG_SLEEPS
-#define sleep_amt_1 1500
-#define sleep_amt_120 130000
-
-#define riot_api_key_file_name "riot_api_key.secret"
-#define pid_file_name "pid.info"
-#define config_file_name "config.txt"
-#define timestamp_file_name "last_timestamp.info"
+#include "config.hpp"
 
 #define UNUSED __attribute__((unused))
 #define LOG logtimestamp(std::cout)
@@ -70,6 +57,8 @@ public:
 	int duration;
 	time_t time_end;
 	std::string win_result;
+	std::string role;
+	std::string position;
 };
 
 static void sleep_ms(int ms);
@@ -108,6 +97,14 @@ static std::ostream &logtimestamp(std::ostream &o)
 	std::time(&timestamp);
 	const std::tm *const now = std::localtime(&timestamp);
 	o << '[' << two_char_pad(now->tm_hour) << ':' << two_char_pad(now->tm_min) << ':' << two_char_pad(now->tm_sec) << "] ";
+	return o;
+}
+
+static std::ostream &log_custom_timestamp_full(std::ostream &o, const time_t timestamp)
+{
+	const std::tm *const t = std::localtime(&timestamp);
+	o << "[" << (t->tm_year + 1900) << "-" << two_char_pad(t->tm_mon + 1) << "-" << two_char_pad(t->tm_mday) << "] ";
+	o << "[" << two_char_pad(t->tm_hour) << ':' << two_char_pad(t->tm_min) << ':' << two_char_pad(t->tm_sec) << "]";
 	return o;
 }
 
@@ -173,6 +170,11 @@ static void log_error_generic(const std::string &msg)
 		logtimestamp(ss) << msg;
 		send_to_webhook(error_report_webhook.second, error_report_webhook.first, ss.str(), {}, false);
 	}
+}
+
+static void string_to_lower(std::string &s)
+{
+	std::transform(s.begin(), s.end(), s.begin(), ::tolower);
 }
 
 static void format_pair(const std::pair<std::string, std::string> &p, std::ostringstream &json_ss)
@@ -272,9 +274,15 @@ static void dispatch_webhook(const GameInfo &game_info, const ConfigRule &rule)
 #ifdef SHOW_ASSISTS
 	ss << "/" << game_info.assists;
 #endif
-	ss << " on " << game_info.champion_name;
-	ss << " while playing ";
-	ss << get_queue_name(game_info.queue_id);;
+	ss << " on ";
+	if (! game_info.position.empty()) {
+		ss << game_info.position << " ";
+	}
+	if (! game_info.role.empty()) {
+		ss << game_info.role << " ";
+	}
+	ss << "**" << game_info.champion_name;
+	ss << "** while playing " << get_queue_name(game_info.queue_id);
 	std::ostringstream played_on_ss;
 	played_on_ss << "<t:" << game_info.time_end << ">";
 	std::ostringstream duration_ss;
@@ -345,6 +353,10 @@ static bool get_game_info(const std::string &riot_token, const std::string &puui
 				} else {
 					game_info.win_result = "-";
 				}
+				game_info.role = p->getValue<std::string>("role");
+				string_to_lower(game_info.role);
+				game_info.position = p->getValue<std::string>("teamPosition");
+				string_to_lower(game_info.position);
 				return true;
 			}
 		}
@@ -509,18 +521,32 @@ static int run(const int sleep_interval)
 	return 0;
 }
 
+static void print_usage(const char *const argv0)
+{
+	std::cerr << "Usage:" << std::endl;
+	std::cerr << "(1) " << argv0 << " {Sleep interval in seconds} -- starts the program" << std::endl;
+	std::cerr << "(2) " << argv0 << " stop       -- stops the program via SIGTERM" << std::endl;
+	std::cerr << "(3) " << argv0 << " reload     -- reloads config via SIGHUP" << std::endl;
+	std::cerr << "(4) " << argv0 << " validate   -- validates the config file" << std::endl;
+	std::cerr << "(5) " << argv0 << " dump_rules -- validates the config file and displays all rules" << std::endl;
+	std::cerr << "(6) " << argv0 << " timestamp  -- utility for changing " << timestamp_file_name << " file" << std::endl;
+}
+
 int main(int argc, char **argv)
 {
-	if (argc != 2) {
-		std::cerr << "Usage:" << std::endl;
-		std::cerr << "(1) ./{Program name} {Sleep interval in seconds} -- starts the program" << std::endl;
-		std::cerr << "(2) ./{Program name} stop       -- stops the program via SIGTERM" << std::endl;
-		std::cerr << "(3) ./{Program name} reload     -- reloads config via SIGHUP" << std::endl;
-		std::cerr << "(4) ./{Program name} validate   -- validates the config file" << std::endl;
-		std::cerr << "(5) ./{Program name} dump_rules -- validates the config file and displays all rules" << std::endl;
+	if (argc == 0) {
+		print_usage("league_match_alert");
+		return 0;
+	}
+	if (argc == 1) {
+		print_usage(argv[0]);
 		return 0;
 	}
 	const std::string arg(argv[1]);
+	if (argc != 2 && arg != "timestamp") {
+		print_usage(argv[0]);
+		return 0;
+	}
 	if (arg == "stop" || arg == "reload") {
 		pid_t target_pid = 0;
 		{
@@ -560,6 +586,57 @@ int main(int argc, char **argv)
 		} else {
 			LOG << "Validation failed" << std::endl;
 		}
+		return 0;
+	} else if (arg == "timestamp") {
+		time_t timestamp = 0;
+		{
+			std::ifstream f(timestamp_file_name);
+			if (f.good()) {
+				f >> timestamp;
+			}
+		}
+		if (timestamp == 0) {
+			std::cerr << "Timestamp file " << timestamp_file_name << " missing or corrupted" << std::endl;
+		} else {
+			std::cerr << timestamp_file_name << ": ";
+			log_custom_timestamp_full(std::cerr, timestamp) << std::endl;
+		}
+		if (argc != 5) {
+			std::cerr << "Modify with: " << argv[0] << " timestamp {+ or -} {amt} {secs or mins or hours or days}" << std::endl;
+			return 0;
+		}
+		const char op = argv[2][0];
+		int amt = std::atoi(argv[3]);
+		const char unit = argv[4][0];
+		if (op == '-') {
+			amt = -amt;
+		} else if (op != '+') {
+			std::cerr << "Unexpected operator '" << op << "', should be + or -" << std::endl;
+			return 1;
+		}
+		switch (unit) {
+		case 's':
+			break;
+		case 'm':
+			amt *= 60;
+			break;
+		case 'h':
+			amt *= 3600;
+			break;
+		case 'd':
+			amt *= 86400;
+			break;
+		default:
+			std::cerr << "Unexpected unit '" << unit << "', should be s, m, h, d" << std::endl;
+			return 1;
+		}
+		timestamp = std::time(nullptr) + amt;
+		{
+			std::ofstream f(timestamp_file_name);
+			f << timestamp << std::endl;
+		}
+		std::cerr << timestamp_file_name << ": ";
+		log_custom_timestamp_full(std::cerr, timestamp) << std::endl;
 		return 0;
 	} else {
 		const int interval = std::atoi(argv[1]);
