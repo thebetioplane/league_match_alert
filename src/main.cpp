@@ -1,29 +1,28 @@
-#include <Poco/Net/HTTPRequest.h>
-#include <Poco/Net/HTTPResponse.h>
-#include <Poco/Net/HTTPMessage.h>
-#include <Poco/Net/HTTPSClientSession.h>
-#include <Poco/Net/NetException.h>
 #include <Poco/JSON/Parser.h>
 #include <Poco/JSON/Stringifier.h>
-#include <Poco/Timespan.h>
+#include <Poco/Net/HTTPMessage.h>
+#include <Poco/Net/HTTPRequest.h>
+#include <Poco/Net/HTTPResponse.h>
+#include <Poco/Net/HTTPSClientSession.h>
+#include <Poco/Net/NetException.h>
 #include <Poco/Net/Socket.h>
+#include <Poco/Timespan.h>
 
-#include <iostream>
-#include <vector>
-#include <map>
-#include <string>
-#include <cstring>
-#include <fstream>
-#include <sstream>
-#include <unistd.h>
-#include <signal.h>
-#include <ctime>
+#include <algorithm>
 #include <atomic>
 #include <cstdlib>
+#include <cstring>
+#include <ctime>
 #include <errno.h>
-#include <atomic>
+#include <fstream>
+#include <iostream>
+#include <map>
+#include <signal.h>
+#include <sstream>
+#include <string>
+#include <unistd.h>
 #include <utility>
-#include <algorithm>
+#include <vector>
 
 #include "config.hpp"
 
@@ -61,6 +60,31 @@ public:
 	std::string position;
 };
 
+class Status {
+public:
+	explicit Status(std::string msg_)
+		: msg(msg_) {}
+	static Status Ok() {
+		return Status();
+	}
+	const std::string msg;
+	bool ok() const {
+		return msg.empty();
+	}
+private:
+	Status() : msg() {}
+};
+
+static std::ostream &operator<<(std::ostream &o, const Status &status)
+{
+	if (status.ok()) {
+		o << "Ok";
+	} else {
+		o << status.msg;
+	}
+	return o;
+}
+
 static void sleep_ms(int ms);
 static bool load_config(std::vector<ConfigRule> &old_rules);
 static void send_to_webhook(const std::string &webhook_route, const std::string &username, const std::string &msg, const std::vector<std::pair<std::string, std::string>> embeds, bool log_if_error);
@@ -91,20 +115,20 @@ static const char *two_char_pad(int n)
 	return res;
 }
 
-static std::ostream &logtimestamp(std::ostream &o)
-{
-	time_t timestamp;
-	std::time(&timestamp);
-	const std::tm *const now = std::localtime(&timestamp);
-	o << '[' << two_char_pad(now->tm_hour) << ':' << two_char_pad(now->tm_min) << ':' << two_char_pad(now->tm_sec) << "] ";
-	return o;
-}
-
 static std::ostream &log_custom_timestamp_full(std::ostream &o, const time_t timestamp)
 {
 	const std::tm *const t = std::localtime(&timestamp);
 	o << "[" << (t->tm_year + 1900) << "-" << two_char_pad(t->tm_mon + 1) << "-" << two_char_pad(t->tm_mday) << "] ";
 	o << "[" << two_char_pad(t->tm_hour) << ':' << two_char_pad(t->tm_min) << ':' << two_char_pad(t->tm_sec) << "]";
+	return o;
+}
+
+static std::ostream &logtimestamp(std::ostream &o)
+{
+	time_t timestamp;
+	std::time(&timestamp);
+	log_custom_timestamp_full(o, timestamp);
+	o << ' ';
 	return o;
 }
 
@@ -162,12 +186,12 @@ static void log_http_error(const std::string &method, const std::string &route, 
 	}
 }
 
-static void log_error_generic(const std::string &msg)
+static void log_error_generic(const Status &status)
 {
-	LOG << msg << std::endl;
+	LOG << status << std::endl;
 	if (! error_report_webhook.second.empty()) {
 		std::ostringstream ss;
-		logtimestamp(ss) << msg;
+		logtimestamp(ss) << status.msg;
 		send_to_webhook(error_report_webhook.second, error_report_webhook.first, ss.str(), {}, false);
 	}
 }
@@ -294,7 +318,7 @@ static void dispatch_webhook(const GameInfo &game_info, const ConfigRule &rule)
 	}, true);
 }
 
-static bool get_game_info(const std::string &riot_token, const std::string &puuid, const std::string &game_id, GameInfo &game_info)
+static Status get_game_info(const std::string &riot_token, const std::string &puuid, const std::string &game_id, GameInfo &game_info)
 {
 	try {
 		using Poco::Net::HTTPSClientSession;
@@ -317,7 +341,7 @@ static bool get_game_info(const std::string &riot_token, const std::string &puui
 		if (status / 100 != 2) {
 			LOG << "I tried to GET match info by gameid and got response " << status << std::endl;
 			log_http_error("GET", route.str(), status);
-			return false;
+			return Status("HTTP error when getting match info by game id");
 		}
 		Parser parser;
 		Poco::Dynamic::Var result = parser.parse(stream);
@@ -357,17 +381,17 @@ static bool get_game_info(const std::string &riot_token, const std::string &puui
 				string_to_lower(game_info.role);
 				game_info.position = p->getValue<std::string>("teamPosition");
 				string_to_lower(game_info.position);
-				return true;
+				return Status::Ok();
 			}
 		}
-		return false;
+		return Status("Target player was not in the array");
 	} catch (Poco::Exception &e) {
-		LOG << "exception while getting game info: " << e.displayText() << std::endl;
+		return Status(e.displayText());
 	}
-	return false;
+	return Status("Failed to process rules");
 }
 
-static bool get_games_since(const std::string &riot_token, const std::string &puuid, const time_t since, const int rule_id, std::vector<std::pair<int, std::string>> &results)
+static Status get_games_between(const std::string &riot_token, const std::string &puuid, const time_t start_time, const time_t end_time, const int rule_id, std::vector<std::pair<int, std::string>> &results)
 {
 	try {
 		using Poco::Net::HTTPSClientSession;
@@ -380,8 +404,10 @@ static bool get_games_since(const std::string &riot_token, const std::string &pu
 		route << "/lol/match/v5/matches/by-puuid/";
 		route << puuid;
 		route << "/ids?startTime=";
-		route << since;
-		route << "&count=20";
+		route << start_time;
+		route << "&endTime=";
+		route << end_time;
+		route << "&count=100";
 
 		HTTPSClientSession cs(riot_endpoint, 443);
 		HTTPRequest request(HTTPRequest::HTTP_GET, route.str(), HTTPMessage::HTTP_1_1);
@@ -394,7 +420,7 @@ static bool get_games_since(const std::string &riot_token, const std::string &pu
 		if (status / 100 != 2) {
 			LOG << "I tried to GET matches by puuid and got response " << status << std::endl;
 			log_http_error("GET", route.str(), status);
-			return false;
+			return Status("HTTP error when getting matches by puuid");
 		}
 		Parser parser;
 		Poco::Dynamic::Var result = parser.parse(stream);
@@ -404,21 +430,22 @@ static bool get_games_since(const std::string &riot_token, const std::string &pu
 			iter->convert(s);
 			results.emplace_back(std::make_pair(rule_id, s));
 		}
-		return true;
+		return Status::Ok();
 	} catch (Poco::Exception &e) {
-		LOG << "exception while getting games: " << e.displayText() << std::endl;
+		return Status(e.displayText());
 	}
-	return false;
+	return Status("Failed to process rules");
 }
 
-static bool process_rules(const std::string &riot_token, const std::vector<ConfigRule> &rules, const time_t last_update)
+static Status process_rules(const std::string &riot_token, const std::vector<ConfigRule> &rules, const time_t last_update, const time_t now)
 {
 	std::vector<std::pair<int, std::string>> matches_to_search;
 	RateCounter r120(rate_limit_120, sleep_amt_120);
 	RateCounter r1(rate_limit_1, sleep_amt_1);
 	for (size_t i = 0; i < rules.size(); ++i) {
-		if (! get_games_since(riot_token, rules[i].puuid, last_update, i, matches_to_search)) {
-			return false;
+		const Status status = get_games_between(riot_token, rules[i].puuid, last_update, now, i, matches_to_search);
+		if (! status.ok()) {
+			return status;
 		}
 		--r120;
 		--r1;
@@ -428,12 +455,13 @@ static bool process_rules(const std::string &riot_token, const std::vector<Confi
 	for (const auto &matches : matches_to_search) {
 		const ConfigRule &rule = rules[matches.first];
 		GameInfo game_info;
-		if (get_game_info(riot_token, rule.puuid, matches.second, game_info)) {
+		const Status status = get_game_info(riot_token, rule.puuid, matches.second, game_info);
+		if (status.ok()) {
 			if (does_rule_match(game_info, rule)) {
 				games_to_dispatch.emplace_back(std::make_pair(game_info, matches.first));
 			}
 		} else {
-			return false;
+			return status;
 		}
 		--r120;
 		--r1;
@@ -448,7 +476,7 @@ static bool process_rules(const std::string &riot_token, const std::vector<Confi
 	for (const auto &game_info_and_rule : games_to_dispatch) {
 		dispatch_webhook(game_info_and_rule.first, rules[game_info_and_rule.second]);
 	}
-	return true;
+	return Status::Ok();
 }
 
 static void my_sa_handler(int sig)
@@ -508,13 +536,14 @@ static int run(const int sleep_interval)
 				riot_token = std::move(new_riot_token);
 			}
 		}
-		const time_t now = std::time(nullptr);
-		if (process_rules(riot_token, rules, last_update)) {
-			last_update = now;
+		const time_t now = std::time(nullptr) - 5;
+		const Status status = process_rules(riot_token, rules, last_update, now);
+		if (status.ok()) {
+			last_update = now + 1;
 			std::ofstream f(timestamp_file_name);
 			f << last_update << std::endl;
 		} else {
-			log_error_generic("Did not process rules");
+			log_error_generic(status);
 		}
 		sleep_ms(sleep_interval);
 	}
@@ -557,9 +586,16 @@ int main(int argc, char **argv)
 		}
 		if (target_pid <= 1) {
 			std::cerr << "Unable to load pid from file... or it is invalid" << std::endl;
+			unlink(pid_file_name);
 			return 1;
 		}
-		const int res = kill(target_pid, (arg == "stop") ? SIGTERM : SIGHUP);
+		int res = 0;
+		if (arg == "stop") {
+			res = kill(target_pid, SIGTERM);
+			unlink(pid_file_name);
+		} else {
+			res = kill(target_pid, SIGHUP);
+		}
 		perror("kill");
 		return res;
 	} else if (arg == "validate" || arg == "dump_rules") {
