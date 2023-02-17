@@ -351,8 +351,17 @@ static Status get_game_info(const std::string &riot_token, const std::string &pu
                 game_info.assists = p->getValue<int>("assists");
 #endif
                 const int team_id = p->getValue<int>("teamId");
+                const bool early_surrender = p->getValue<bool>("gameEndedInEarlySurrender");
+                const bool surrender = early_surrender || p->getValue<bool>("gameEndedInSurrender");
                 if (num_winning_teams == 1) {
                     game_info.win_result = (winning_team == team_id) ? "WIN" : "LOSS";
+                    if (surrender) {
+                        if (early_surrender) {
+                            game_info.win_result += " (By early surrender)";
+                        } else {
+                            game_info.win_result += " (By surrender)";
+                        }
+                    }
                 } else {
                     game_info.win_result = "-";
                 }
