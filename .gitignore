@@ -1,8 +1,8 @@
-league_match_alert
-config.txt
-*.secret
 *.info
-*.out
 *.log
+*.out
+*.secret
+.vscode/
+config.txt
+league_match_alert
 obj/
-
