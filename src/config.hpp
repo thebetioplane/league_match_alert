@@ -5,8 +5,8 @@
 #define rate_limit_1 20
 // request per 2 mins
 #define rate_limit_120 100
-//#define SHOW_ASSISTS
-//#define LOG_SLEEPS
+// #define SHOW_ASSISTS
+// #define LOG_SLEEPS
 #define sleep_amt_1 1500
 #define sleep_amt_120 130000
 
