@@ -28,6 +28,7 @@
 
 #define UNUSED __attribute__((unused))
 #define LOG logtimestamp(std::cout)
+#define BOOL_LITERAL(b) ((b) ? "true" : "false")
 
 extern std::map<int, std::string> queue_name_map;
 
@@ -52,6 +53,7 @@ class ConfigRule
 class GameInfo
 {
    public:
+    bool silently_skip;
     int queue_id;
     std::string champion_name;
     int kills;
@@ -65,6 +67,24 @@ class GameInfo
     std::string role;
     std::string position;
 };
+
+std::ostream &operator<<(std::ostream &o, const GameInfo &game_info)
+{
+    o << "  silently_skip = " << BOOL_LITERAL(game_info.silently_skip) << '\n';
+    o << "  queue_id = " << game_info.queue_id << '\n';
+    o << "  champion_name = " << game_info.champion_name << '\n';
+    o << "  kills = " << game_info.kills << '\n';
+    o << "  deaths = " << game_info.deaths << '\n';
+#ifdef SHOW_ASSISTS
+    o << "  assists = " << game_info.assists << '\n';
+#endif
+    o << "  duration = " << game_info.duration << '\n';
+    o << "  time_end = " << game_info.time_end << '\n';
+    o << "  win_result = " << game_info.win_result << '\n';
+    o << "  role = " << game_info.role << '\n';
+    o << "  position = " << game_info.position;
+    return o;
+}
 
 class Status
 {
@@ -326,6 +346,10 @@ int compare_ratio(int n0, int d0, int n1, int d1)
 
 bool does_rule_match(const GameInfo &game_info, const ConfigRule &rule)
 {
+    if (game_info.silently_skip) {
+        LOG << "Silently skipping game\n" << game_info << std::endl;
+        return false;
+    }
     if (game_info.deaths < rule.min_death) {
         return false;
     }
@@ -364,6 +388,7 @@ void dispatch_webhook(const GameInfo &game_info, const ConfigRule &rule)
 Status get_game_info(const std::string &riot_token, const std::string &puuid, const std::string &game_id,
                      GameInfo &game_info)
 {
+    game_info.silently_skip = false;
     try {
         using Poco::Net::HTTPMessage;
         using Poco::Net::HTTPRequest;
@@ -394,6 +419,13 @@ Status get_game_info(const std::string &riot_token, const std::string &puuid, co
         game_info.queue_id = info_obj->getValue<int>("queueId");
         game_info.duration = info_obj->getValue<time_t>("gameDuration");
         const time_t game_start = info_obj->getValue<time_t>("gameCreation") / 1000;
+        if (game_start == 0) {
+            // See https://github.com/RiotGames/developer-relations/issues/642
+            // This is a corrupted match, so it should be skipped
+            game_info.silently_skip = true;
+            LOG << "Skipped corrupted match\n  puuid = " << puuid << "\n  game_id = " << game_id << std::endl;
+            return Status::Ok();
+        }
         game_info.time_end = game_start + game_info.duration;
         int num_winning_teams = 0;
         int winning_team = 0;
@@ -512,14 +544,14 @@ Status process_rules(const std::string &riot_token, const std::vector<ConfigRule
     std::vector<std::pair<GameInfo, int>> games_to_dispatch;
     for (const auto &matches : matches_to_search) {
         const ConfigRule &rule = rules[matches.first];
-        GameInfo game_info;
+        GameInfo game_info = {};
         const Status status = get_game_info(riot_token, rule.puuid, matches.second, game_info);
-        if (status.ok()) {
+        if (!status.ok()) {
+            return status;
+        } else {
             if (does_rule_match(game_info, rule)) {
                 games_to_dispatch.emplace_back(std::make_pair(game_info, matches.first));
             }
-        } else {
-            return status;
         }
         --r120;
         --r1;
