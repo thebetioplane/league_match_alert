@@ -1,6 +1,9 @@
 #include <map>
 #include <string>
 std::map<int, std::string> queue_name_map{
+    // Manually adding arena since static.developer.riotgames.com/docs/lol/queues.json has not been updated to reflect
+    // the new game mode.
+    {1700, "Arena"},
     {0, "Custom"},
     {2, "5v5 Blind Pick"},
     {4, "5v5 Ranked Solo"},
