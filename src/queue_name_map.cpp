@@ -1,9 +1,6 @@
 #include <map>
 #include <string>
 std::map<int, std::string> queue_name_map{
-    // Manually adding arena since static.developer.riotgames.com/docs/lol/queues.json has not been updated to reflect
-    // the new game mode.
-    {1700, "Arena"},
     {0, "Custom"},
     {2, "5v5 Blind Pick"},
     {4, "5v5 Ranked Solo"},
@@ -52,6 +49,7 @@ std::map<int, std::string> queue_name_map{
     {450, "5v5 ARAM"},
     {460, "3v3 Blind Pick"},
     {470, "3v3 Ranked Flex"},
+    {490, "Normal (Quickplay)"},
     {600, "Blood Hunt Assassin"},
     {610, "Dark Star: Singularity"},
     {700, "Summoner's Rift Clash"},
@@ -85,6 +83,7 @@ std::map<int, std::string> queue_name_map{
     {1200, "Nexus Blitz"},
     {1300, "Nexus Blitz"},
     {1400, "Ultimate Spellbook"},
+    {1700, "Arena"},
     {1900, "Pick URF"},
     {2000, "Tutorial 1"},
     {2010, "Tutorial 2"},
