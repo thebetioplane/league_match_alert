@@ -25,12 +25,13 @@
 #include <vector>
 
 #include "config.hpp"
+#include "queue_name_map.hpp"
+#include "status.hpp"
+#include "string_util.hpp"
 
 #define UNUSED __attribute__((unused))
 #define LOG logtimestamp(std::cout)
 #define BOOL_LITERAL(b) ((b) ? "true" : "false")
-
-extern std::map<int, std::string> queue_name_map;
 
 namespace
 {
@@ -86,38 +87,6 @@ std::ostream &operator<<(std::ostream &o, const GameInfo &game_info)
     return o;
 }
 
-class Status
-{
-   public:
-    explicit Status(std::string msg_) : msg(msg_)
-    {
-    }
-    static Status Ok()
-    {
-        return Status();
-    }
-    const std::string msg;
-    bool ok() const
-    {
-        return msg.empty();
-    }
-
-   private:
-    Status() : msg()
-    {
-    }
-};
-
-std::ostream &operator<<(std::ostream &o, const Status &status)
-{
-    if (status.ok()) {
-        o << "Ok";
-    } else {
-        o << status.msg;
-    }
-    return o;
-}
-
 Status get_game_info(const std::string &riot_token, const std::string &puuid, const std::string &game_id,
                      GameInfo &game_info);
 Status get_games_between(const std::string &riot_token, const std::string &puuid, const time_t start_time,
@@ -127,7 +96,6 @@ Status process_rules(const std::string &riot_token, const std::vector<ConfigRule
 bool does_rule_match(const GameInfo &game_info, const ConfigRule &rule);
 bool load_config(std::vector<ConfigRule> &old_rules);
 bool stoi_noexcept(const std::string &s, int &n) noexcept;
-const char *two_char_pad(int n);
 int compare_ratio(int n0, int d0, int n1, int d1);
 int run(const int sleep_interval);
 std::ostream &log_custom_timestamp_full(std::ostream &o, const time_t timestamp);
@@ -144,7 +112,6 @@ void print_usage(const char *const argv0);
 void send_to_webhook(const std::string &webhook_route, const std::string &username, const std::string &msg,
                      const std::vector<std::pair<std::string, std::string>> embeds, bool log_if_error);
 void sleep_ms(int ms);
-void string_to_lower(std::string &s);
 
 // Once a rate limit is exhausted it sleeps for that amount
 class RateCounter
@@ -169,14 +136,6 @@ class RateCounter
 };
 
 enum class FileSection { None, WebhookDefs, PlayerDefs, RuleDefs };
-
-const char *two_char_pad(int n)
-{
-    static char res[3];
-    res[0] = (n / 10 % 10) + '0';
-    res[1] = (n % 10) + '0';
-    return res;
-}
 
 std::ostream &log_custom_timestamp_full(std::ostream &o, const time_t timestamp)
 {
@@ -259,11 +218,6 @@ void log_error_generic(const Status &status)
         logtimestamp(ss) << status.msg;
         send_to_webhook(error_report_webhook.second, error_report_webhook.first, ss.str(), {}, false);
     }
-}
-
-void string_to_lower(std::string &s)
-{
-    std::transform(s.begin(), s.end(), s.begin(), ::tolower);
 }
 
 void format_pair(const std::pair<std::string, std::string> &p, std::ostringstream &json_ss)
@@ -368,7 +322,7 @@ void dispatch_webhook(const GameInfo &game_info, const ConfigRule &rule)
     ss << "/" << game_info.assists;
 #endif
     ss << " on ";
-    if (!game_info.position.empty()) {
+    if (!game_info.position.empty() && game_info.position != "none") {
         ss << game_info.position << " ";
     }
     if (!game_info.role.empty() && game_info.role != "none") {
