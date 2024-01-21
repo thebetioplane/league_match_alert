@@ -7,6 +7,9 @@
 #define rate_limit_120 100
 // #define SHOW_ASSISTS
 // #define LOG_SLEEPS
+
+// The API field to use for position. "lane", "teamPosition", "individualPosition"
+#define POSITION "lane"
 #define sleep_amt_1 1500
 #define sleep_amt_120 130000
 

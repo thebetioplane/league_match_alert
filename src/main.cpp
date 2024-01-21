@@ -371,7 +371,7 @@ void dispatch_webhook(const GameInfo &game_info, const ConfigRule &rule)
     if (!game_info.position.empty()) {
         ss << game_info.position << " ";
     }
-    if (!game_info.role.empty()) {
+    if (!game_info.role.empty() && game_info.role != "none") {
         ss << game_info.role << " ";
     }
     ss << "**" << game_info.champion_name;
@@ -464,7 +464,7 @@ Status get_game_info(const std::string &riot_token, const std::string &puuid, co
                 }
                 game_info.role = p->getValue<std::string>("role");
                 string_to_lower(game_info.role);
-                game_info.position = p->getValue<std::string>("teamPosition");
+                game_info.position = p->getValue<std::string>(POSITION);
                 string_to_lower(game_info.position);
                 return Status::Ok();
             }
@@ -801,7 +801,7 @@ int main(int argc, char **argv)
         return 0;
     }
     const std::string arg(argv[1]);
-    if (argc != 2 && arg != "timestamp") {
+    if (arg == "help" || (argc != 2 && arg != "timestamp")) {
         print_usage(argv[0]);
         return 0;
     }
