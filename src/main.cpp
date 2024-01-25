@@ -322,11 +322,11 @@ void dispatch_webhook(const GameInfo &game_info, const ConfigRule &rule)
     ss << "/" << game_info.assists;
 #endif
     ss << " on ";
-    if (!game_info.position.empty() && game_info.position != "none") {
-        ss << game_info.position << " ";
-    }
     if (!game_info.role.empty() && game_info.role != "none") {
         ss << game_info.role << " ";
+    }
+    if (!game_info.position.empty() && game_info.position != "none") {
+        ss << game_info.position << " ";
     }
     ss << "**" << game_info.champion_name;
     ss << "** while playing " << get_queue_name(game_info.queue_id);
