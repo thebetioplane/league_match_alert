@@ -169,7 +169,7 @@ std::string read_first_line(const char *fname)
 void sleep_ms(int ms)
 {
 #ifdef LOG_SLEEPS
-    std::cout << "Sleeping for " << ms << " ms" << std::endl;
+    LOG << "Sleeping for " << ms << " ms" << std::endl;
 #endif
     struct timespec req;
     req.tv_sec = ms / 1000;
@@ -520,6 +520,7 @@ Status process_rules(const std::string &riot_token, const std::vector<ConfigRule
     for (const auto &game_info_and_rule : games_to_dispatch) {
         dispatch_webhook(game_info_and_rule.first, rules[game_info_and_rule.second]);
     }
+    LOG << "Dispatched " << games_to_dispatch.size() << " games" << std::endl;
     return Status::Ok();
 }
 
