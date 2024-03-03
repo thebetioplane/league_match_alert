@@ -21,6 +21,7 @@
 #include <map>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -97,7 +98,7 @@ bool does_rule_match(const GameInfo &game_info, const ConfigRule &rule);
 bool load_config(std::vector<ConfigRule> &old_rules);
 bool stoi_noexcept(const std::string &s, int &n) noexcept;
 int compare_ratio(int n0, int d0, int n1, int d1);
-int run(const int sleep_interval);
+bool run(const int sleep_interval);
 std::ostream &log_custom_timestamp_full(std::ostream &o, const time_t timestamp);
 std::ostream &logtimestamp(std::ostream &o);
 std::string get_queue_name(int queue_id);
@@ -531,7 +532,7 @@ void my_sa_handler(int sig)
     }
 }
 
-int run(const int sleep_interval)
+bool run(const int sleep_interval)
 {
     if (sleep_interval < 120) {
         LOG << "WARNING: Setting the sleep interval under 120 seconds put you at "
@@ -544,13 +545,13 @@ int run(const int sleep_interval)
         info.sa_handler = &my_sa_handler;
         if (sigaction(SIGHUP, &info, nullptr) == -1) {
             perror("sigaction");
-            return 1;
+            return false;
         }
     }
     std::string riot_token = read_first_line(riot_api_key_file_name);
     if (riot_token.size() <= 1) {
         std::cerr << "Invalid riot token" << std::endl;
-        return 1;
+        return false;
     }
     {
         std::ofstream f(pid_file_name);
@@ -594,7 +595,7 @@ int run(const int sleep_interval)
         }
         sleep_ms(sleep_interval);
     }
-    return 0;
+    return true;
 }
 
 // Config parsing code
@@ -734,7 +735,10 @@ bool load_config(std::vector<ConfigRule> &old_rules)
 void print_usage(const char *const argv0)
 {
     std::cerr << "Usage:" << std::endl;
-    std::cerr << "(1) " << argv0 << " {Sleep interval in seconds} -- starts the program" << std::endl;
+    std::cerr << "(0) " << argv0 << " help -- prints this description" << std::endl;
+    std::cerr << "(1) " << argv0
+              << " run {Sleep interval in seconds} {Initial sleep before processing in seconds} -- starts the program"
+              << std::endl;
     std::cerr << "(2) " << argv0 << " stop       -- stops the program via SIGTERM" << std::endl;
     std::cerr << "(3) " << argv0 << " reload     -- reloads config via SIGHUP" << std::endl;
     std::cerr << "(4) " << argv0 << " validate   -- validates the config file" << std::endl;
@@ -747,18 +751,25 @@ void print_usage(const char *const argv0)
 
 int main(int argc, char **argv)
 {
+    constexpr int SUCCESS = EXIT_SUCCESS;
+    constexpr int FAILURE = EXIT_FAILURE;
     if (argc == 0) {
         print_usage("league_match_alert");
-        return 0;
+        return SUCCESS;
     }
     if (argc == 1) {
         print_usage(argv[0]);
-        return 0;
+        return SUCCESS;
     }
-    const std::string arg(argv[1]);
-    if (arg == "help" || (argc != 2 && arg != "timestamp")) {
+    const std::string_view arg(argv[1]);
+    if (arg == "help") {
         print_usage(argv[0]);
-        return 0;
+        return SUCCESS;
+    }
+    if (argc != 2 && arg != "run" && arg != "timestamp") {
+        std::cerr << "Wrong number of args" << std::endl;
+        print_usage(argv[0]);
+        return FAILURE;
     }
     if (arg == "stop" || arg == "reload") {
         pid_t target_pid = 0;
@@ -771,7 +782,7 @@ int main(int argc, char **argv)
         if (target_pid <= 1) {
             std::cerr << "Unable to load pid from file... or it is invalid" << std::endl;
             unlink(pid_file_name);
-            return 1;
+            return FAILURE;
         }
         int res = 0;
         if (arg == "stop") {
@@ -806,7 +817,7 @@ int main(int argc, char **argv)
         } else {
             LOG << "Validation failed" << std::endl;
         }
-        return 0;
+        return SUCCESS;
     } else if (arg == "timestamp") {
         time_t timestamp = 0;
         {
@@ -824,7 +835,7 @@ int main(int argc, char **argv)
         if (argc != 5) {
             std::cerr << "Modify with: " << argv[0] << " timestamp {+ or -} {amt} {secs or mins or hours or days}"
                       << std::endl;
-            return 0;
+            return SUCCESS;
         }
         const char op = argv[2][0];
         int amt = std::atoi(argv[3]);
@@ -833,7 +844,7 @@ int main(int argc, char **argv)
             amt = -amt;
         } else if (op != '+') {
             std::cerr << "Unexpected operator '" << op << "', should be + or -" << std::endl;
-            return 1;
+            return FAILURE;
         }
         switch (unit) {
             case 's':
@@ -849,7 +860,7 @@ int main(int argc, char **argv)
                 break;
             default:
                 std::cerr << "Unexpected unit '" << unit << "', should be s, m, h, d" << std::endl;
-                return 1;
+                return FAILURE;
         }
         timestamp = std::time(nullptr) + amt;
         {
@@ -858,14 +869,37 @@ int main(int argc, char **argv)
         }
         std::cerr << timestamp_file_name << ": ";
         log_custom_timestamp_full(std::cerr, timestamp) << std::endl;
-        return 0;
-    } else {
-        const int interval = std::atoi(argv[1]);
+        return SUCCESS;
+    } else if (arg == "run") {
+        if (argc < 3) {
+            std::cerr << "Needs interval in sec for command \"run\"" << std::endl;
+            return FAILURE;
+        }
+        const int interval = std::atoi(argv[2]);
         constexpr int max_sleep_range = 1000000;
         if (interval <= 1 || interval > max_sleep_range) {
-            std::cerr << "Invalid interval, must be >= 1 and < " << max_sleep_range << std::endl;
-            return 1;
+            std::cerr << "Invalid interval, must be > 1 and < " << max_sleep_range << std::endl;
+            return FAILURE;
         }
-        return run(interval * 1000);
+
+        int initial_sleep = 0;
+        if (argc == 4) {
+            initial_sleep = std::atoi(argv[3]);
+            if (initial_sleep < 0 || initial_sleep > max_sleep_range) {
+                std::cerr << "Invalid initial sleep, must be >= 0 and < " << max_sleep_range << std::endl;
+                return FAILURE;
+            }
+        } else if (argc != 3) {
+            std::cerr << "Wrong number of args for command \"run\"" << std::endl;
+            return FAILURE;
+        }
+        if (initial_sleep > 0) {
+            sleep_ms(initial_sleep * 1000);
+        }
+        return run(interval * 1000) ? SUCCESS : FAILURE;
+    } else {
+        std::cerr << "Unknown arg: " << arg << std::endl;
+        print_usage(argv[0]);
+        return SUCCESS;
     }
 }
