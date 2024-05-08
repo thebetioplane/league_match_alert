@@ -84,6 +84,7 @@ std::map<int, std::string> queue_name_map{
     {1300, "Nexus Blitz"},
     {1400, "Ultimate Spellbook"},
     {1700, "Arena"},
+    {1710, "Arena"},
     {1900, "Pick URF"},
     {2000, "Tutorial 1"},
     {2010, "Tutorial 2"},
