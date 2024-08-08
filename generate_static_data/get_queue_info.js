@@ -30,7 +30,7 @@ function processObj(arr) {
 	stream.write('std::map<int, std::string> queue_name_map {\n')
 	for (let item of arr) {
 		let name = item.description ? item.description : item.map;
-		name = name.replace(/[ ]*games?/g, '');
+		name = name.replace(/[ ]+games?/ig, '');
 		stream.write('{');
 		stream.write(item.queueId.toString());
 		stream.write(',"');
