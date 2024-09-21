@@ -84,6 +84,7 @@ std::map<int, std::string> queue_name_map{
     {1110, "Teamfight Tactics Tutorial"},
     {1111, "Teamfight Tactics test"},
     {1200, "Nexus Blitz"},
+    {1210, "Teamfight Tactics Choncc's Treasure Mode"},
     {1300, "Nexus Blitz"},
     {1400, "Ultimate Spellbook"},
     {1700, "Arena"},
