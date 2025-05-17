@@ -280,9 +280,9 @@ void send_to_webhook(const std::string &webhook_route, const std::string &userna
         }
         return;
     } catch (std::invalid_argument &e) {
-        LOG << "exception while sending message: " << e.what() << std::endl;
+        LOG << "std::invalid_argument while sending message: " << e.what() << std::endl;
     } catch (Poco::Exception &e) {
-        LOG << "exception while sending message: " << e.displayText() << std::endl;
+        LOG << "Poco::Exception while sending message: " << e.displayText() << std::endl;
     }
     sleep_ms(default_sleep_amt);
 }
@@ -430,7 +430,7 @@ Status get_game_info(const std::string &riot_token, const std::string &puuid, co
         LOG << "  game_id = " << game_id << std::endl;
         return Status("Target player was not in the array");
     } catch (Poco::Exception &e) {
-        return Status(e.displayText());
+        return Status(std::string("[Poco::Exception] ") + e.displayText());
     }
     return Status("Failed to process rules");
 }
@@ -477,7 +477,7 @@ Status get_games_between(const std::string &riot_token, const std::string &puuid
         }
         return Status::Ok();
     } catch (Poco::Exception &e) {
-        return Status(e.displayText());
+        return Status(std::string("[Poco::Exception] ") + e.displayText());
     }
     return Status("Failed to process rules");
 }
