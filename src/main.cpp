@@ -27,6 +27,7 @@
 
 #include "config.hpp"
 #include "queue_name_map.hpp"
+#include "riot_error_types.hpp"
 #include "status.hpp"
 #include "string_util.hpp"
 
@@ -107,7 +108,7 @@ std::vector<std::string> pipe_split(const std::string &input);
 void dispatch_webhook(const GameInfo &game_info, const ConfigRule &rule);
 void format_pair(const std::pair<std::string, std::string> &p, std::ostringstream &json_ss);
 void log_error_generic(const Status &status);
-void log_http_error(const std::string &method, const std::string &route, const int status);
+void log_http_error(const std::string &method, const std::string &route, int status, RiotErrorType riot_error_type);
 void my_sa_handler(int sig);
 void print_usage(const char *const argv0);
 void send_to_webhook(const std::string &webhook_route, const std::string &username, const std::string &msg,
@@ -186,28 +187,30 @@ void sleep_ms(int ms)
     }
 }
 
-void log_http_error(const std::string &method, const std::string &route, const int status)
+void log_http_error(const std::string &method, const std::string &route, const int status,
+    const RiotErrorType riot_error_type)
 {
-    LOG << status << "|" << method << "|" << route << std::endl;
+    LOG << status << "|" << riot_error_type << "|" << method << "|" << route << std::endl;
     if (!error_report_webhook.second.empty()) {
         std::ostringstream ss;
         logtimestamp(ss) << "Got HTTP error";
         send_to_webhook(error_report_webhook.second, error_report_webhook.first, ss.str(),
             {
                 { "Status", std::to_string(status) },
+                { "Action", RiotErrorTypeToString(riot_error_type) },
                 { "Method", method },
                 { "Route", route },
             },
             false);
-        if (status == 403) {
+        if (riot_error_type == RiotErrorType::ABORT) {
             std::ostringstream ss2;
-            logtimestamp(ss2) << "Exiting due to 403. You must update the token.";
+            logtimestamp(ss2) << "Permanent abortable error " << status;
             send_to_webhook(error_report_webhook.second, error_report_webhook.first, ss2.str(), {}, false);
         }
     }
-    if (status == 403) {
-        LOG << "Calling std::exit(403)" << std::endl;
-        std::exit(403);
+    if (riot_error_type == RiotErrorType::ABORT) {
+        LOG << "Exiting due to " << status << std::endl;
+        std::exit(1);
     }
 }
 
@@ -265,11 +268,12 @@ void send_to_webhook(const std::string &webhook_route, const std::string &userna
         HTTPResponse response;
         cs.receiveResponse(response);
         const int status = response.getStatus();
-        if (status / 100 != 2) {
+        const RiotErrorType riot_error_type = get_riot_error_type(status);
+        if (riot_error_type != RiotErrorType::SUCCESS) {
             LOG << "I tried to POST to webhook and got response " << status << std::endl;
             // trace(json);
             if (log_if_error) {
-                log_http_error("POST", "webhook", status);
+                log_http_error("POST", "webhook", status, riot_error_type);
             }
         }
         const int remaining = std::stoi(response.get("x-ratelimit-remaining"));
@@ -363,10 +367,17 @@ Status get_game_info(const std::string &riot_token, const std::string &puuid, co
         HTTPResponse response;
         auto &stream = cs.receiveResponse(response);
         const int status = response.getStatus();
-        if (status / 100 != 2) {
+        const RiotErrorType riot_error_type = get_riot_error_type(status);
+        if (riot_error_type != RiotErrorType::SUCCESS) {
             LOG << "I tried to GET match info by gameid and got response " << status << std::endl;
-            log_http_error("GET", route.str(), status);
-            return Status("HTTP error when getting match info by game id");
+            log_http_error("GET", route.str(), status, riot_error_type);
+            if (riot_error_type == RiotErrorType::RETRY) {
+                return Status("HTTP error when getting match info by game id");
+            }
+            LOG << "Skipped bad match\n  puuid = " << puuid << "\n  game_id = " << game_id << std::endl;
+            game_info = GameInfo{};
+            game_info.silently_skip = true;
+            return Status::Ok();
         }
         Parser parser;
         Poco::Dynamic::Var result = parser.parse(stream);
@@ -462,10 +473,13 @@ Status get_games_between(const std::string &riot_token, const std::string &puuid
         HTTPResponse response;
         auto &stream = cs.receiveResponse(response);
         const int status = response.getStatus();
-        if (status / 100 != 2) {
+        const RiotErrorType riot_error_type = get_riot_error_type(status);
+        if (riot_error_type != RiotErrorType::SUCCESS) {
             LOG << "I tried to GET matches by puuid and got response " << status << std::endl;
-            log_http_error("GET", route.str(), status);
-            return Status("HTTP error when getting matches by puuid");
+            log_http_error("GET", route.str(), status, riot_error_type);
+            if (riot_error_type == RiotErrorType::RETRY) {
+                return Status("HTTP error when getting matches by puuid");
+            }
         }
         Parser parser;
         Poco::Dynamic::Var result = parser.parse(stream);
