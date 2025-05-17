@@ -42,7 +42,7 @@ std::atomic<bool> needs_config_reload(true);
 
 class ConfigRule
 {
-   public:
+public:
     std::string player_name;
     std::string puuid;
     int min_death;
@@ -54,7 +54,7 @@ class ConfigRule
 
 class GameInfo
 {
-   public:
+public:
     bool silently_skip;
     int queue_id;
     std::string champion_name;
@@ -89,11 +89,11 @@ std::ostream &operator<<(std::ostream &o, const GameInfo &game_info)
 }
 
 Status get_game_info(const std::string &riot_token, const std::string &puuid, const std::string &game_id,
-                     GameInfo &game_info);
+    GameInfo &game_info);
 Status get_games_between(const std::string &riot_token, const std::string &puuid, const time_t start_time,
-                         const time_t end_time, const int rule_id, std::vector<std::pair<int, std::string>> &results);
+    const time_t end_time, const int rule_id, std::vector<std::pair<int, std::string>> &results);
 Status process_rules(const std::string &riot_token, const std::vector<ConfigRule> &rules, const time_t last_update,
-                     const time_t now);
+    const time_t now);
 bool does_rule_match(const GameInfo &game_info, const ConfigRule &rule);
 bool load_config(std::vector<ConfigRule> &old_rules);
 bool stoi_noexcept(const std::string &s, int &n) noexcept;
@@ -111,13 +111,13 @@ void log_http_error(const std::string &method, const std::string &route, const i
 void my_sa_handler(int sig);
 void print_usage(const char *const argv0);
 void send_to_webhook(const std::string &webhook_route, const std::string &username, const std::string &msg,
-                     const std::vector<std::pair<std::string, std::string>> embeds, bool log_if_error);
+    const std::vector<std::pair<std::string, std::string>> embeds, bool log_if_error);
 void sleep_ms(int ms);
 
 // Once a rate limit is exhausted it sleeps for that amount
 class RateCounter
 {
-   public:
+public:
     RateCounter(int l_max_amt, int l_sleep_amt) : max_amt(l_max_amt), sleep_amt(l_sleep_amt), current_value(l_max_amt)
     {
     }
@@ -130,7 +130,7 @@ class RateCounter
         }
     }
 
-   private:
+private:
     const int max_amt;
     const int sleep_amt;
     int current_value;
@@ -193,12 +193,12 @@ void log_http_error(const std::string &method, const std::string &route, const i
         std::ostringstream ss;
         logtimestamp(ss) << "Got HTTP error";
         send_to_webhook(error_report_webhook.second, error_report_webhook.first, ss.str(),
-                        {
-                            {"Status", std::to_string(status)},
-                            {"Method", method},
-                            {"Route", route},
-                        },
-                        false);
+            {
+                { "Status", std::to_string(status) },
+                { "Method", method },
+                { "Route", route },
+            },
+            false);
         if (status == 403) {
             std::ostringstream ss2;
             logtimestamp(ss2) << "Exiting due to 403. You must update the token.";
@@ -231,7 +231,7 @@ void format_pair(const std::pair<std::string, std::string> &p, std::ostringstrea
 }
 
 void send_to_webhook(const std::string &webhook_route, const std::string &username, const std::string &msg,
-                     const std::vector<std::pair<std::string, std::string>> embeds, bool log_if_error)
+    const std::vector<std::pair<std::string, std::string>> embeds, bool log_if_error)
 {
     constexpr int default_sleep_amt = 1000;
     try {
@@ -290,7 +290,8 @@ void send_to_webhook(const std::string &webhook_route, const std::string &userna
 std::string get_queue_name(int queue_id)
 {
     auto iter = queue_name_map.find(queue_id);
-    if (iter == queue_name_map.end()) return "League of Legends";
+    if (iter == queue_name_map.end())
+        return "League of Legends";
     return iter->second;
 }
 
@@ -335,13 +336,13 @@ void dispatch_webhook(const GameInfo &game_info, const ConfigRule &rule)
     played_on_ss << "<t:" << game_info.time_end << ">";
     std::ostringstream duration_ss;
     duration_ss << (game_info.duration / 60) << ":" << two_char_pad(game_info.duration % 60);
-    send_to_webhook(
-        rule.webhook_route, rule.webhook_username, ss.str(),
-        {{"Played on", played_on_ss.str()}, {"Duration", duration_ss.str()}, {"Result", game_info.win_result}}, true);
+    send_to_webhook(rule.webhook_route, rule.webhook_username, ss.str(),
+        { { "Played on", played_on_ss.str() }, { "Duration", duration_ss.str() }, { "Result", game_info.win_result } },
+        true);
 }
 
 Status get_game_info(const std::string &riot_token, const std::string &puuid, const std::string &game_id,
-                     GameInfo &game_info)
+    GameInfo &game_info)
 {
     game_info.silently_skip = false;
     try {
@@ -435,7 +436,7 @@ Status get_game_info(const std::string &riot_token, const std::string &puuid, co
 }
 
 Status get_games_between(const std::string &riot_token, const std::string &puuid, const time_t start_time,
-                         const time_t end_time, const int rule_id, std::vector<std::pair<int, std::string>> &results)
+    const time_t end_time, const int rule_id, std::vector<std::pair<int, std::string>> &results)
 {
     try {
         using Poco::Net::HTTPMessage;
@@ -482,7 +483,7 @@ Status get_games_between(const std::string &riot_token, const std::string &puuid
 }
 
 Status process_rules(const std::string &riot_token, const std::vector<ConfigRule> &rules, const time_t last_update,
-                     const time_t now)
+    const time_t now)
 {
     std::vector<std::pair<int, std::string>> matches_to_search;
     RateCounter r120(rate_limit_120, sleep_amt_120);
@@ -514,9 +515,9 @@ Status process_rules(const std::string &riot_token, const std::vector<ConfigRule
     if (games_to_dispatch.size() > 1) {
         // sort them in chronological order if there is more than one
         std::sort(games_to_dispatch.begin(), games_to_dispatch.end(),
-                  [](const GameInfoAndRule &lhs, const GameInfoAndRule &rhs) {
-                      return lhs.first.time_end < rhs.first.time_end;
-                  });
+            [](const GameInfoAndRule &lhs, const GameInfoAndRule &rhs) {
+            return lhs.first.time_end < rhs.first.time_end;
+        });
     }
     for (const auto &game_info_and_rule : games_to_dispatch) {
         dispatch_webhook(game_info_and_rule.first, rules[game_info_and_rule.second]);
@@ -636,8 +637,10 @@ bool load_config(std::vector<ConfigRule> &old_rules)
     std::map<std::string, std::string> player_map;
     std::vector<ConfigRule> rules;
     while (std::getline(f, line)) {
-        if (line.size() <= 1) continue;
-        if (line[0] == '#') continue;
+        if (line.size() <= 1)
+            continue;
+        if (line[0] == '#')
+            continue;
         if (line == "Webhook Defs") {
             section = FileSection::WebhookDefs;
         } else if (line == "Player Defs") {
@@ -646,60 +649,62 @@ bool load_config(std::vector<ConfigRule> &old_rules)
             section = FileSection::RuleDefs;
         } else {
             switch (section) {
-                case FileSection::None:
-                    LOG << "Unexpected line outside of section" << std::endl;
-                    std::cout << "Line was \"" << line << "\"" << std::endl;
+            case FileSection::None:
+                LOG << "Unexpected line outside of section" << std::endl;
+                std::cout << "Line was \"" << line << "\"" << std::endl;
+                return false;
+            case FileSection::WebhookDefs: {
+                const auto res = pipe_split(line);
+                if (res.size() != 3) {
+                    LOG << "Item in webhook def section has size " << res.size() << " but should be 3" << std::endl;
                     return false;
-                case FileSection::WebhookDefs: {
-                    const auto res = pipe_split(line);
-                    if (res.size() != 3) {
-                        LOG << "Item in webhook def section has size " << res.size() << " but should be 3" << std::endl;
-                        return false;
-                    }
-                    if (res[2][0] != '/') {
-                        LOG << "webhook route does not start with /" << std::endl;
-                        return false;
-                    }
-                    webhook_map.emplace(res[0], std::make_pair(res[1], res[2]));
-                    break;
                 }
-                case FileSection::PlayerDefs: {
-                    const auto res = pipe_split(line);
-                    if (res.size() != 2) {
-                        LOG << "Item in player def section has size " << res.size() << " but should be 2" << std::endl;
-                        return false;
-                    }
-                    player_map.emplace(res[0], res[1]);
-                    break;
+                if (res[2][0] != '/') {
+                    LOG << "webhook route does not start with /" << std::endl;
+                    return false;
                 }
-                case FileSection::RuleDefs: {
-                    const auto res = pipe_split(line);
-                    if (res.size() != 5) {
-                        LOG << "Item in rule def section has size " << res.size() << " but should be 5" << std::endl;
-                        return false;
-                    }
-                    auto player_iter = player_map.find(res[0]);
-                    if (player_iter == player_map.end()) {
-                        LOG << "\"" << res[0] << "\" did not name a valid player" << std::endl;
-                        return false;
-                    }
-                    auto webhook_iter = webhook_map.find(res[4]);
-                    if (webhook_iter == webhook_map.end()) {
-                        LOG << "\"" << res[4] << "\" did not name a valid webhook" << std::endl;
-                        return false;
-                    }
-                    int min_death = 0;
-                    if (!stoi_noexcept(res[1], min_death)) return false;
-                    int max_kd_k = 0;
-                    if (!stoi_noexcept(res[2], max_kd_k)) return false;
-                    int max_kd_d = 0;
-                    if (!stoi_noexcept(res[3], max_kd_d)) return false;
-                    ConfigRule rule{
-                        player_iter->first,         player_iter->second,        min_death, max_kd_k, max_kd_d,
-                        webhook_iter->second.first, webhook_iter->second.second};
-                    rules.emplace_back(std::move(rule));
-                    break;
+                webhook_map.emplace(res[0], std::make_pair(res[1], res[2]));
+                break;
+            }
+            case FileSection::PlayerDefs: {
+                const auto res = pipe_split(line);
+                if (res.size() != 2) {
+                    LOG << "Item in player def section has size " << res.size() << " but should be 2" << std::endl;
+                    return false;
                 }
+                player_map.emplace(res[0], res[1]);
+                break;
+            }
+            case FileSection::RuleDefs: {
+                const auto res = pipe_split(line);
+                if (res.size() != 5) {
+                    LOG << "Item in rule def section has size " << res.size() << " but should be 5" << std::endl;
+                    return false;
+                }
+                auto player_iter = player_map.find(res[0]);
+                if (player_iter == player_map.end()) {
+                    LOG << "\"" << res[0] << "\" did not name a valid player" << std::endl;
+                    return false;
+                }
+                auto webhook_iter = webhook_map.find(res[4]);
+                if (webhook_iter == webhook_map.end()) {
+                    LOG << "\"" << res[4] << "\" did not name a valid webhook" << std::endl;
+                    return false;
+                }
+                int min_death = 0;
+                if (!stoi_noexcept(res[1], min_death))
+                    return false;
+                int max_kd_k = 0;
+                if (!stoi_noexcept(res[2], max_kd_k))
+                    return false;
+                int max_kd_d = 0;
+                if (!stoi_noexcept(res[3], max_kd_d))
+                    return false;
+                ConfigRule rule{ player_iter->first, player_iter->second, min_death, max_kd_k, max_kd_d,
+                    webhook_iter->second.first, webhook_iter->second.second };
+                rules.emplace_back(std::move(rule));
+                break;
+            }
             }
         }
     }
@@ -847,20 +852,20 @@ int main(int argc, char **argv)
             return FAILURE;
         }
         switch (unit) {
-            case 's':
-                break;
-            case 'm':
-                amt *= 60;
-                break;
-            case 'h':
-                amt *= 3600;
-                break;
-            case 'd':
-                amt *= 86400;
-                break;
-            default:
-                std::cerr << "Unexpected unit '" << unit << "', should be s, m, h, d" << std::endl;
-                return FAILURE;
+        case 's':
+            break;
+        case 'm':
+            amt *= 60;
+            break;
+        case 'h':
+            amt *= 3600;
+            break;
+        case 'd':
+            amt *= 86400;
+            break;
+        default:
+            std::cerr << "Unexpected unit '" << unit << "', should be s, m, h, d" << std::endl;
+            return FAILURE;
         }
         timestamp = std::time(nullptr) + amt;
         {
