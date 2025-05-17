@@ -112,7 +112,7 @@ void log_http_error(const std::string &method, const std::string &route, int sta
 void my_sa_handler(int sig);
 void print_usage(const char *const argv0);
 void send_to_webhook(const std::string &webhook_route, const std::string &username, const std::string &msg,
-    const std::vector<std::pair<std::string, std::string>> embeds, bool log_if_error);
+    const std::initializer_list<std::pair<std::string, std::string>> embeds, bool log_if_error);
 void sleep_ms(int ms);
 
 // Once a rate limit is exhausted it sleeps for that amount
@@ -234,7 +234,7 @@ void format_pair(const std::pair<std::string, std::string> &p, std::ostringstrea
 }
 
 void send_to_webhook(const std::string &webhook_route, const std::string &username, const std::string &msg,
-    const std::vector<std::pair<std::string, std::string>> embeds, bool log_if_error)
+    const std::initializer_list<std::pair<std::string, std::string>> embeds, bool log_if_error)
 {
     constexpr int default_sleep_amt = 1000;
     try {
@@ -252,12 +252,14 @@ void send_to_webhook(const std::string &webhook_route, const std::string &userna
         json_ss << ",\"username\":";
         Poco::JSON::Stringifier::formatString(username, json_ss);
         json_ss << ",";
-        if (!embeds.empty()) {
+        if (!std::empty(embeds)) {
             json_ss << "\"embeds\":[{\"fields\":[";
-            format_pair(embeds[0], json_ss);
-            for (size_t i = 1; i < embeds.size(); ++i) {
+            const auto *embed_iter = embeds.begin();
+            format_pair(*embed_iter, json_ss);
+            ++embed_iter;
+            for (; embed_iter != embeds.end(); ++embed_iter) {
                 json_ss << ',';
-                format_pair(embeds[i], json_ss);
+                format_pair(*embed_iter, json_ss);
             }
             json_ss << "]}],";
         }
@@ -572,7 +574,6 @@ bool run(const int sleep_interval)
         std::ofstream f(pid_file_name);
         f << getpid() << std::endl;
     }
-    // send_to_webhook(webhook_url, "Message");
     time_t last_update = 0;
     {
         std::ifstream f(timestamp_file_name);
