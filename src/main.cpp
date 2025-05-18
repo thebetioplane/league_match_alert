@@ -26,13 +26,13 @@
 #include <vector>
 
 #include "config.hpp"
+#include "logging.hpp"
 #include "queue_name_map.hpp"
 #include "riot_error_types.hpp"
 #include "status.hpp"
 #include "string_util.hpp"
 
 #define UNUSED __attribute__((unused))
-#define LOG logtimestamp(std::cout)
 #define BOOL_LITERAL(b) ((b) ? "true" : "false")
 
 namespace
@@ -100,8 +100,6 @@ bool load_config(std::vector<ConfigRule> &old_rules);
 bool stoi_noexcept(const std::string &s, int &n) noexcept;
 int compare_ratio(int n0, int d0, int n1, int d1);
 bool run(const int sleep_interval);
-std::ostream &log_custom_timestamp_full(std::ostream &o, const time_t timestamp);
-std::ostream &logtimestamp(std::ostream &o);
 std::string get_queue_name(int queue_id);
 std::string read_first_line(const char *fname);
 std::vector<std::string> pipe_split(const std::string &input);
@@ -138,23 +136,6 @@ private:
 };
 
 enum class FileSection { None, WebhookDefs, PlayerDefs, RuleDefs };
-
-std::ostream &log_custom_timestamp_full(std::ostream &o, const time_t timestamp)
-{
-    const std::tm *const t = std::localtime(&timestamp);
-    o << "[" << (t->tm_year + 1900) << "-" << two_char_pad(t->tm_mon + 1) << "-" << two_char_pad(t->tm_mday) << "] ";
-    o << "[" << two_char_pad(t->tm_hour) << ':' << two_char_pad(t->tm_min) << ':' << two_char_pad(t->tm_sec) << "]";
-    return o;
-}
-
-std::ostream &logtimestamp(std::ostream &o)
-{
-    time_t timestamp;
-    std::time(&timestamp);
-    log_custom_timestamp_full(o, timestamp);
-    o << ' ';
-    return o;
-}
 
 std::string read_first_line(const char *fname)
 {
