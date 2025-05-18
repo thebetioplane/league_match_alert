@@ -30,9 +30,12 @@ RiotErrorType get_riot_error_type(const int status)
     case 2:
         return RiotErrorType::SUCCESS;
     case 4: {
-        if (status == 401) {
+        switch (status) {
+        case 401:
             return RiotErrorType::ABORT;
-        } else {
+        case 429:
+            return RiotErrorType::RETRY;
+        default:
             // Riot may return 4XX errors for matches even if they are returned from the API.
             // https://x.com/RiotGamesDevRel/status/1922373887599489163
             // "As a result of this, querying the Riot API for Brawl match data will result in a 403 error."
