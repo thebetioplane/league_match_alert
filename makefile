@@ -1,6 +1,6 @@
 MAKEFLAGS += Rr
 CXX := g++
-CXXFLAGS := -Wall -Wextra -Wpedantic -Wshadow -std=c++17 -O2 -march=native
+CXXFLAGS := -Wall -Wextra -Wpedantic -Wshadow -std=c++20 -O2 -march=native
 LDLIBS := -lPocoJSON -lPocoNetSSL -lPocoNet -lPocoFoundation
 TARGET := league_match_alert
 

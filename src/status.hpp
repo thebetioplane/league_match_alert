@@ -1,15 +1,22 @@
 #pragma once
 
 #include <ostream>
+#include <source_location>
 #include <string>
 
 class Status
 {
 public:
-    explicit Status(std::string msg_) : msg(msg_) {}
+    explicit Status(std::string msg_, std::source_location source_location_ = std::source_location::current())
+        : msg(msg_),
+          source_location(source_location_)
+    {
+    }
     static Status Ok() { return Status(); }
-    const std::string msg;
     bool ok() const { return msg.empty(); }
+
+    const std::string msg;
+    const std::source_location source_location;
 
 private:
     Status() : msg() {}

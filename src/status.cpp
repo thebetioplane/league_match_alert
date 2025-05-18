@@ -9,5 +9,6 @@ std::ostream &operator<<(std::ostream &o, const Status &status)
     } else {
         o << status.msg;
     }
+    o << " (" << status.source_location.file_name() << ":" << status.source_location.line() << ")";
     return o;
 }
