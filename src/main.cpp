@@ -450,7 +450,7 @@ Status get_games_between(const std::string &riot_token, const std::string &puuid
                 return Status("HTTP error when getting matches by puuid");
             }
             if (riot_error_type == RiotErrorType::SKIP) {
-                LOG << "Skipping getting matches for puuid " << puuid;
+                LOG << "Skipping getting matches for puuid " << puuid << std::endl;
                 return Status::Ok();
             }
         }
