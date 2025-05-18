@@ -341,10 +341,12 @@ Status get_game_info(const std::string &riot_token, const std::string &puuid, co
             if (riot_error_type == RiotErrorType::RETRY) {
                 return Status("HTTP error when getting match info by game id");
             }
-            LOG << "Skipped bad match\n  puuid = " << puuid << "\n  game_id = " << game_id << std::endl;
-            game_info = GameInfo{};
-            game_info.silently_skip = true;
-            return Status::Ok();
+            if (riot_error_type == RiotErrorType::SKIP) {
+                LOG << "Skipped bad match\n  puuid = " << puuid << "\n  game_id = " << game_id << std::endl;
+                game_info = GameInfo{};
+                game_info.silently_skip = true;
+                return Status::Ok();
+            }
         }
         Parser parser;
         Poco::Dynamic::Var result = parser.parse(stream);
@@ -446,6 +448,10 @@ Status get_games_between(const std::string &riot_token, const std::string &puuid
             log_http_error("GET", route.str(), status, riot_error_type);
             if (riot_error_type == RiotErrorType::RETRY) {
                 return Status("HTTP error when getting matches by puuid");
+            }
+            if (riot_error_type == RiotErrorType::SKIP) {
+                LOG << "Skipping getting matches for puuid " << puuid;
+                return Status::Ok();
             }
         }
         Parser parser;
