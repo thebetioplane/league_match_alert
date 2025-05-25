@@ -24,7 +24,6 @@
 #include <utility>
 #include <vector>
 
-#include "time_util.hpp"
 #include "config.hpp"
 #include "config_file.hpp"
 #include "logging.hpp"
@@ -32,6 +31,7 @@
 #include "riot_error_types.hpp"
 #include "status.hpp"
 #include "string_util.hpp"
+#include "time_util.hpp"
 
 #define UNUSED __attribute__((unused))
 #define BOOL_LITERAL(b) ((b) ? "true" : "false")
@@ -428,32 +428,47 @@ Status get_games_between(const std::string &riot_token, const std::string &puuid
 Status process_rules(const std::string &riot_token, const std::vector<ConfigRule> &rules, const time_t last_update,
     const time_t now)
 {
+    constexpr int max_transient_retries = 4;
+    constexpr int transient_retry_wait = 7000;
     std::vector<std::pair<int, std::string>> matches_to_search;
     RateCounter r120(rate_limit_120, sleep_amt_120);
     RateCounter r1(rate_limit_1, sleep_amt_1);
     for (size_t i = 0; i < rules.size(); ++i) {
-        const Status status = get_games_between(riot_token, rules[i].puuid, last_update, now, i, matches_to_search);
-        if (!status.ok()) {
-            return status;
+        for (int retry_num = 0;; ++retry_num) {
+            const Status status = get_games_between(riot_token, rules[i].puuid, last_update, now, i, matches_to_search);
+            --r120;
+            --r1;
+            if (status.ok()) {
+                break;
+            } else if (retry_num >= max_transient_retries) {
+                return status;
+            } else {
+                LOG << status << ", will retry in " << transient_retry_wait << " ms" << std::endl;
+                sleep_ms(transient_retry_wait);
+            }
         }
-        --r120;
-        --r1;
     }
     using GameInfoAndRule = std::pair<GameInfo, int>;
     std::vector<std::pair<GameInfo, int>> games_to_dispatch;
     for (const auto &matches : matches_to_search) {
-        const ConfigRule &rule = rules[matches.first];
-        GameInfo game_info = {};
-        const Status status = get_game_info(riot_token, rule.puuid, matches.second, game_info);
-        if (!status.ok()) {
-            return status;
-        } else {
-            if (does_rule_match(game_info, rule)) {
-                games_to_dispatch.emplace_back(std::make_pair(game_info, matches.first));
+        for (int retry_num = 0;; ++retry_num) {
+            const ConfigRule &rule = rules[matches.first];
+            GameInfo game_info = {};
+            const Status status = get_game_info(riot_token, rule.puuid, matches.second, game_info);
+            --r120;
+            --r1;
+            if (status.ok()) {
+                if (does_rule_match(game_info, rule)) {
+                    games_to_dispatch.emplace_back(std::make_pair(game_info, matches.first));
+                }
+                break;
+            } else if (retry_num >= max_transient_retries) {
+                return status;
+            } else {
+                LOG << status << ", will retry in " << transient_retry_wait << " ms" << std::endl;
+                sleep_ms(transient_retry_wait);
             }
         }
-        --r120;
-        --r1;
     }
     if (games_to_dispatch.size() > 1) {
         // sort them in chronological order if there is more than one

@@ -1,7 +1,7 @@
 #pragma once
 
-#include <iostream>
 #include <ctime>
+#include <iostream>
 #include <ostream>
 
 #define LOG logtimestamp(std::cout)
