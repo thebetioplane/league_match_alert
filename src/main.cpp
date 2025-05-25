@@ -7,7 +7,6 @@
 #include <Poco/Net/NetException.h>
 #include <Poco/Net/Socket.h>
 #include <Poco/Timespan.h>
-#include <errno.h>
 #include <signal.h>
 #include <unistd.h>
 
@@ -25,6 +24,7 @@
 #include <utility>
 #include <vector>
 
+#include "time_util.hpp"
 #include "config.hpp"
 #include "config_file.hpp"
 #include "logging.hpp"
@@ -97,29 +97,6 @@ void my_sa_handler(int sig);
 void print_usage(const char *const argv0);
 void send_to_webhook(const std::string &webhook_route, const std::string &username, const std::string &msg,
     const std::initializer_list<std::pair<std::string, std::string>> embeds, bool log_if_error);
-void sleep_ms(int ms);
-
-// Once a rate limit is exhausted it sleeps for that amount
-class RateCounter
-{
-public:
-    RateCounter(int l_max_amt, int l_sleep_amt) : max_amt(l_max_amt), sleep_amt(l_sleep_amt), current_value(l_max_amt)
-    {
-    }
-    void operator--()
-    {
-        --current_value;
-        if (current_value <= 0) {
-            current_value = max_amt;
-            sleep_ms(sleep_amt);
-        }
-    }
-
-private:
-    const int max_amt;
-    const int sleep_amt;
-    int current_value;
-};
 
 std::string read_first_line(const char *fname)
 {
@@ -129,27 +106,6 @@ std::string read_first_line(const char *fname)
         std::getline(f, result);
     }
     return result;
-}
-
-// This is a wrapper to nanosleep
-// It is written this way so the sleep resumes where it left off after a signal
-void sleep_ms(int ms)
-{
-#ifdef LOG_SLEEPS
-    LOG << "Sleeping for " << ms << " ms" << std::endl;
-#endif
-    struct timespec req;
-    req.tv_sec = ms / 1000;
-    req.tv_nsec = (ms % 1000) * 1000000L;
-    struct timespec rem;
-    for (;;) {
-        const int res = nanosleep(&req, &rem);
-        if (res < 0 && errno == EINTR) {
-            std::memcpy(&req, &rem, sizeof(req));
-        } else {
-            return;
-        }
-    }
 }
 
 void log_http_error(const std::string &method, const std::string &route, const int status,
