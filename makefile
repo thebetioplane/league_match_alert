@@ -21,9 +21,9 @@ clean:
 obj/config_file.o: src/config_file.cpp src/config_file.hpp src/config.hpp \
  src/logging.hpp
 obj/logging.o: src/logging.cpp src/logging.hpp src/string_util.hpp
-obj/main.o: src/main.cpp src/time_util.hpp src/config.hpp src/config_file.hpp \
- src/logging.hpp src/queue_name_map.hpp src/riot_error_types.hpp \
- src/status.hpp src/string_util.hpp
+obj/main.o: src/main.cpp src/config.hpp src/config_file.hpp src/logging.hpp \
+ src/queue_name_map.hpp src/riot_error_types.hpp src/status.hpp \
+ src/string_util.hpp src/time_util.hpp
 obj/queue_name_map.o: src/queue_name_map.cpp
 obj/riot_error_types.o: src/riot_error_types.cpp src/riot_error_types.hpp
 obj/status.o: src/status.cpp src/status.hpp
