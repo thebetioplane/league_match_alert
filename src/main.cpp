@@ -77,9 +77,9 @@ std::ostream &operator<<(std::ostream &o, const GameInfo &game_info)
     return o;
 }
 
-Status get_game_info(const std::string &riot_token, const std::string &puuid, const std::string &game_id,
+Status get_game_info(const std::string &riot_token, std::string_view puuid, std::string_view game_id,
     GameInfo &game_info);
-Status get_games_between(const std::string &riot_token, const std::string &puuid, const time_t start_time,
+Status get_games_between(const std::string &riot_token, std::string_view puuid, const time_t start_time,
     const time_t end_time, const int rule_id, std::vector<std::pair<int, std::string>> &results);
 Status process_rules(const std::string &riot_token, const std::vector<ConfigRule> &rules, const time_t last_update,
     const time_t now);
@@ -91,10 +91,10 @@ std::string read_first_line(const char *fname);
 void dispatch_webhook(const GameInfo &game_info, const ConfigRule &rule);
 void format_pair(const std::pair<std::string_view, std::string_view> &p, std::ostringstream &json_ss);
 void log_error_generic(const Status &status);
-void log_http_error(const std::string &method, const std::string &route, int status, RiotErrorType riot_error_type);
+void log_http_error(const std::string &method, std::string_view route, int status, RiotErrorType riot_error_type);
 void my_sa_handler(int sig);
 void print_usage(const char *const argv0);
-void send_to_webhook(const std::string &webhook_route, const std::string &username, const std::string &msg,
+void send_to_webhook(const std::string &webhook_route, std::string_view username, std::string_view msg,
     const std::initializer_list<std::pair<std::string_view, std::string_view>> embeds, bool log_if_error);
 
 std::string read_first_line(const char *fname)
@@ -107,7 +107,7 @@ std::string read_first_line(const char *fname)
     return result;
 }
 
-void log_http_error(const std::string &method, const std::string &route, const int status,
+void log_http_error(const std::string &method, const std::string_view route, const int status,
     const RiotErrorType riot_error_type)
 {
     const std::string_view riot_error_type_string = RiotErrorTypeToString(riot_error_type);
@@ -154,7 +154,7 @@ void format_pair(const std::pair<std::string_view, std::string_view> &p, std::os
     json_ss << "\",\"inline\":true}";
 }
 
-void send_to_webhook(const std::string &webhook_route, const std::string &username, const std::string &msg,
+void send_to_webhook(const std::string &webhook_route, const std::string_view username, const std::string_view msg,
     const std::initializer_list<std::pair<std::string_view, std::string_view>> embeds, bool log_if_error)
 {
     constexpr int default_sleep_amt = 1000;
@@ -168,11 +168,11 @@ void send_to_webhook(const std::string &webhook_route, const std::string &userna
         HTTPRequest request(HTTPRequest::HTTP_POST, webhook_route, HTTPMessage::HTTP_1_1);
         request.set("Content-Type", "application/json");
         std::ostringstream json_ss;
-        json_ss << "{\"content\":";
-        Poco::JSON::Stringifier::formatString(msg, json_ss);
-        json_ss << ",\"username\":";
-        Poco::JSON::Stringifier::formatString(username, json_ss);
-        json_ss << ",";
+        json_ss << "{\"content\":\"";
+        json_ss << escape_json_string(msg);
+        json_ss << "\",\"username\":\"";
+        json_ss << escape_json_string(username);
+        json_ss << "\",";
         if (!std::empty(embeds)) {
             json_ss << "\"embeds\":[{\"fields\":[";
             const auto *embed_iter = embeds.begin();
@@ -268,7 +268,7 @@ void dispatch_webhook(const GameInfo &game_info, const ConfigRule &rule)
         true);
 }
 
-Status get_game_info(const std::string &riot_token, const std::string &puuid, const std::string &game_id,
+Status get_game_info(const std::string &riot_token, const std::string_view puuid, const std::string_view game_id,
     GameInfo &game_info)
 {
     game_info.silently_skip = false;
@@ -371,7 +371,7 @@ Status get_game_info(const std::string &riot_token, const std::string &puuid, co
     return Status("Failed to process rules");
 }
 
-Status get_games_between(const std::string &riot_token, const std::string &puuid, const time_t start_time,
+Status get_games_between(const std::string &riot_token, const std::string_view puuid, const time_t start_time,
     const time_t end_time, const int rule_id, std::vector<std::pair<int, std::string>> &results)
 {
     try {
