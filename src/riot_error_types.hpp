@@ -1,6 +1,6 @@
 #pragma once
 
-#include <ostream>
+#include <string_view>
 
 enum class RiotErrorType {
     // 200
@@ -18,5 +18,4 @@ enum class RiotErrorType {
 
 RiotErrorType get_riot_error_type(const int status);
 
-const char *RiotErrorTypeToString(RiotErrorType riot_error_type);
-std::ostream &operator<<(std::ostream &o, RiotErrorType riot_error_type);
+std::string_view RiotErrorTypeToString(RiotErrorType riot_error_type);

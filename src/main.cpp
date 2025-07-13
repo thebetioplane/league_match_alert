@@ -110,14 +110,15 @@ std::string read_first_line(const char *fname)
 void log_http_error(const std::string &method, const std::string &route, const int status,
     const RiotErrorType riot_error_type)
 {
-    LOG << status << "|" << riot_error_type << "|" << method << "|" << route << std::endl;
+    const std::string_view riot_error_type_string = RiotErrorTypeToString(riot_error_type);
+    LOG << status << "|" << riot_error_type_string << "|" << method << "|" << route << std::endl;
     if (!error_report_webhook.second.empty()) {
         std::ostringstream ss;
         logtimestamp(ss) << "Got HTTP error";
         send_to_webhook(error_report_webhook.second, error_report_webhook.first, ss.str(),
             {
                 { "Status", std::to_string(status) },
-                { "Action", RiotErrorTypeToString(riot_error_type) },
+                { "Action", riot_error_type_string },
                 { "Method", method },
                 { "Route", route },
             },

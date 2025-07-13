@@ -1,8 +1,8 @@
 #include "riot_error_types.hpp"
 
-#include <ostream>
+#include <string_view>
 
-const char *RiotErrorTypeToString(RiotErrorType riot_error_type)
+std::string_view RiotErrorTypeToString(RiotErrorType riot_error_type)
 {
     switch (riot_error_type) {
     case RiotErrorType::SUCCESS:
@@ -15,12 +15,6 @@ const char *RiotErrorTypeToString(RiotErrorType riot_error_type)
         return "SKIP";
     }
     return "(unknown)";
-}
-
-std::ostream &operator<<(std::ostream &o, const RiotErrorType riot_error_type)
-{
-    o << RiotErrorTypeToString(riot_error_type);
-    return o;
 }
 
 RiotErrorType get_riot_error_type(const int status)
