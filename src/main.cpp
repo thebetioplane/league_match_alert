@@ -1,5 +1,4 @@
 #include <Poco/JSON/Parser.h>
-#include <Poco/JSON/Stringifier.h>
 #include <Poco/Net/HTTPMessage.h>
 #include <Poco/Net/HTTPRequest.h>
 #include <Poco/Net/HTTPResponse.h>
@@ -90,13 +89,13 @@ bool run(const int sleep_interval);
 std::string get_queue_name(int queue_id);
 std::string read_first_line(const char *fname);
 void dispatch_webhook(const GameInfo &game_info, const ConfigRule &rule);
-void format_pair(const std::pair<std::string, std::string> &p, std::ostringstream &json_ss);
+void format_pair(const std::pair<std::string_view, std::string_view> &p, std::ostringstream &json_ss);
 void log_error_generic(const Status &status);
 void log_http_error(const std::string &method, const std::string &route, int status, RiotErrorType riot_error_type);
 void my_sa_handler(int sig);
 void print_usage(const char *const argv0);
 void send_to_webhook(const std::string &webhook_route, const std::string &username, const std::string &msg,
-    const std::initializer_list<std::pair<std::string, std::string>> embeds, bool log_if_error);
+    const std::initializer_list<std::pair<std::string_view, std::string_view>> embeds, bool log_if_error);
 
 std::string read_first_line(const char *fname)
 {
@@ -145,17 +144,17 @@ void log_error_generic(const Status &status)
     }
 }
 
-void format_pair(const std::pair<std::string, std::string> &p, std::ostringstream &json_ss)
+void format_pair(const std::pair<std::string_view, std::string_view> &p, std::ostringstream &json_ss)
 {
-    json_ss << "{\"name\":";
-    Poco::JSON::Stringifier::formatString(p.first, json_ss);
-    json_ss << ",\"value\":";
-    Poco::JSON::Stringifier::formatString(p.second, json_ss);
-    json_ss << ",\"inline\":true}";
+    json_ss << "{\"name\":\"";
+    json_ss << escape_json_string(p.first);
+    json_ss << "\",\"value\":\"";
+    json_ss << escape_json_string(p.second);
+    json_ss << "\",\"inline\":true}";
 }
 
 void send_to_webhook(const std::string &webhook_route, const std::string &username, const std::string &msg,
-    const std::initializer_list<std::pair<std::string, std::string>> embeds, bool log_if_error)
+    const std::initializer_list<std::pair<std::string_view, std::string_view>> embeds, bool log_if_error)
 {
     constexpr int default_sleep_amt = 1000;
     try {
