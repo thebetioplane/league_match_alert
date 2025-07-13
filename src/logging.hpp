@@ -4,8 +4,8 @@
 #include <iostream>
 #include <ostream>
 
-#define LOG logtimestamp(std::cout)
+#define LOG (std::cout << current_timestamp_string() << ' ')
 
-std::ostream &log_custom_timestamp_full(std::ostream &o, const time_t timestamp);
+std::string timestamp_to_string(const time_t timestamp);
 
-std::ostream &logtimestamp(std::ostream &o);
+std::string current_timestamp_string();

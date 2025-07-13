@@ -110,23 +110,28 @@ std::string read_first_line(const char *fname)
 void log_http_error(const std::string &method, const std::string_view route, const int status,
     const RiotErrorType riot_error_type)
 {
+    int32ToStringBuffer status_string_buffer;
+    const std::string_view status_string = int32_to_string(status, status_string_buffer);
     const std::string_view riot_error_type_string = RiotErrorTypeToString(riot_error_type);
-    LOG << status << "|" << riot_error_type_string << "|" << method << "|" << route << std::endl;
+    LOG << status_string << "|" << riot_error_type_string << "|" << method << "|" << route << std::endl;
     if (!error_report_webhook.second.empty()) {
-        std::ostringstream ss;
-        logtimestamp(ss) << "Got HTTP error";
-        send_to_webhook(error_report_webhook.second, error_report_webhook.first, ss.str(),
+        const std::string current_timestamp = current_timestamp_string();
+        send_to_webhook(error_report_webhook.second, error_report_webhook.first,
+            string_cat({ current_timestamp, " Got HTTP error" }),
             {
-                { "Status", std::to_string(status) },
+                { "Status", status_string },
                 { "Action", riot_error_type_string },
                 { "Method", method },
                 { "Route", route },
             },
             false);
         if (riot_error_type == RiotErrorType::ABORT) {
-            std::ostringstream ss2;
-            logtimestamp(ss2) << "Permanent abortable error " << status;
-            send_to_webhook(error_report_webhook.second, error_report_webhook.first, ss2.str(), {}, false);
+            std::string error_message = string_cat({
+                current_timestamp,
+                " Permanent abortable error ",
+                status_string,
+            });
+            send_to_webhook(error_report_webhook.second, error_report_webhook.first, error_message, {}, false);
         }
     }
     if (riot_error_type == RiotErrorType::ABORT) {
@@ -139,9 +144,8 @@ void log_error_generic(const Status &status)
 {
     LOG << status << std::endl;
     if (!error_report_webhook.second.empty()) {
-        std::ostringstream ss;
-        logtimestamp(ss) << status.msg;
-        send_to_webhook(error_report_webhook.second, error_report_webhook.first, ss.str(), {}, false);
+        send_to_webhook(error_report_webhook.second, error_report_webhook.first,
+            string_cat({ current_timestamp_string(), status.msg }), {}, false);
     }
 }
 
@@ -259,13 +263,15 @@ void dispatch_webhook(const GameInfo &game_info, const ConfigRule &rule)
     }
     ss << "**" << game_info.champion_name;
     ss << "** while playing " << get_queue_name(game_info.queue_id);
-    std::ostringstream played_on_ss;
-    played_on_ss << "<t:" << game_info.time_end << ">";
-    std::ostringstream duration_ss;
-    duration_ss << (game_info.duration / 60) << ":" << two_char_pad(game_info.duration % 60);
+    timeSecToStringBuffer game_info_time_end_buffer;
+    const std::string played_on =
+        string_cat({ "<t:", time_sec_to_string(game_info.time_end, game_info_time_end_buffer), ">" });
+    int32ToStringBuffer minutes_buffer;
+    TwoCharPadBuffer seconds_buffer;
+    const std::string duration = string_cat({ int32_to_string(game_info.duration / 60, minutes_buffer), ":",
+        two_char_pad(game_info.duration % 60, seconds_buffer) });
     send_to_webhook(rule.webhook_route, rule.webhook_username, ss.str(),
-        { { "Played on", played_on_ss.str() }, { "Duration", duration_ss.str() }, { "Result", game_info.win_result } },
-        true);
+        { { "Played on", played_on }, { "Duration", duration }, { "Result", game_info.win_result } }, true);
 }
 
 Status get_game_info(const std::string &riot_token, const std::string_view puuid, const std::string_view game_id,
@@ -279,11 +285,10 @@ Status get_game_info(const std::string &riot_token, const std::string_view puuid
         using Poco::Net::HTTPSClientSession;
         using namespace Poco::JSON;
 
-        std::ostringstream route;
-        route << "/lol/match/v5/matches/" << game_id;
+        const std::string route = string_cat({ "/lol/match/v5/matches/", game_id });
 
         HTTPSClientSession cs(riot_endpoint, 443);
-        HTTPRequest request(HTTPRequest::HTTP_GET, route.str(), HTTPMessage::HTTP_1_1);
+        HTTPRequest request(HTTPRequest::HTTP_GET, route, HTTPMessage::HTTP_1_1);
         request.setContentLength(0);
         request.set("X-Riot-Token", riot_token);
         cs.sendRequest(request);
@@ -293,7 +298,7 @@ Status get_game_info(const std::string &riot_token, const std::string_view puuid
         const RiotErrorType riot_error_type = get_riot_error_type(status);
         if (riot_error_type != RiotErrorType::SUCCESS) {
             LOG << "I tried to GET match info by gameid and got response " << status << std::endl;
-            log_http_error("GET", route.str(), status, riot_error_type);
+            log_http_error("GET", route, status, riot_error_type);
             if (riot_error_type == RiotErrorType::RETRY) {
                 return Status("HTTP error when getting match info by game id");
             }
@@ -381,17 +386,21 @@ Status get_games_between(const std::string &riot_token, const std::string_view p
         using Poco::Net::HTTPSClientSession;
         using namespace Poco::JSON;
 
-        std::ostringstream route;
-        route << "/lol/match/v5/matches/by-puuid/";
-        route << puuid;
-        route << "/ids?startTime=";
-        route << start_time;
-        route << "&endTime=";
-        route << end_time;
-        route << "&count=100";
+        timeSecToStringBuffer start_time_buffer;
+        timeSecToStringBuffer end_time_buffer;
+
+        const std::string route = string_cat({
+            "/lol/match/v5/matches/by-puuid/",
+            puuid,
+            "/ids?startTime=",
+            time_sec_to_string(start_time, start_time_buffer),
+            "&endTime=",
+            time_sec_to_string(end_time, end_time_buffer),
+            "&count=100",
+        });
 
         HTTPSClientSession cs(riot_endpoint, 443);
-        HTTPRequest request(HTTPRequest::HTTP_GET, route.str(), HTTPMessage::HTTP_1_1);
+        HTTPRequest request(HTTPRequest::HTTP_GET, route, HTTPMessage::HTTP_1_1);
         request.setContentLength(0);
         request.set("X-Riot-Token", riot_token);
         cs.sendRequest(request);
@@ -401,7 +410,7 @@ Status get_games_between(const std::string &riot_token, const std::string_view p
         const RiotErrorType riot_error_type = get_riot_error_type(status);
         if (riot_error_type != RiotErrorType::SUCCESS) {
             LOG << "I tried to GET matches by puuid and got response " << status << std::endl;
-            log_http_error("GET", route.str(), status, riot_error_type);
+            log_http_error("GET", route, status, riot_error_type);
             if (riot_error_type == RiotErrorType::RETRY) {
                 return Status("HTTP error when getting matches by puuid");
             }
@@ -653,8 +662,7 @@ int main(int argc, char **argv)
         if (timestamp == 0) {
             std::cerr << "Timestamp file " << timestamp_file_name << " missing or corrupted" << std::endl;
         } else {
-            std::cerr << timestamp_file_name << ": ";
-            log_custom_timestamp_full(std::cerr, timestamp) << std::endl;
+            std::cerr << timestamp_file_name << ": " << timestamp_to_string(timestamp) << std::endl;
         }
         if (argc != 5) {
             std::cerr << "Modify with: " << argv[0] << " timestamp {+ or -} {amt} {secs or mins or hours or days}"
@@ -691,8 +699,7 @@ int main(int argc, char **argv)
             std::ofstream f(timestamp_file_name);
             f << timestamp << std::endl;
         }
-        std::cerr << timestamp_file_name << ": ";
-        log_custom_timestamp_full(std::cerr, timestamp) << std::endl;
+        std::cerr << timestamp_file_name << ": " << timestamp_to_string(timestamp) << std::endl;
         return SUCCESS;
     } else if (arg == "run") {
         if (argc < 3) {
