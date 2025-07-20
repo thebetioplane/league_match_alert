@@ -371,7 +371,7 @@ Status get_game_info(const std::string &riot_token, const std::string_view puuid
         LOG << "  game_id = " << game_id << std::endl;
         return Status("Target player was not in the array");
     } catch (Poco::Exception &e) {
-        return Status(std::string("[Poco::Exception] ") + e.displayText());
+        return Status(string_cat({ "[Poco::Exception] ", e.displayText() }));
     }
     return Status("Failed to process rules");
 }
@@ -429,7 +429,7 @@ Status get_games_between(const std::string &riot_token, const std::string_view p
         }
         return Status::Ok();
     } catch (Poco::Exception &e) {
-        return Status(std::string("[Poco::Exception] ") + e.displayText());
+        return Status(string_cat({ "[Poco::Exception] ", e.displayText() }));
     }
     return Status("Failed to process rules");
 }
