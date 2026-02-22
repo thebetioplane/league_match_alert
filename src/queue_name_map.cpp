@@ -49,6 +49,7 @@ std::map<int, std::string> queue_name_map{
     { 450, "5v5 ARAM" },
     { 460, "3v3 Blind Pick" },
     { 470, "3v3 Ranked Flex" },
+    { 480, "Swiftplay" },
     { 490, "Normal (Quickplay)" },
     { 600, "Blood Hunt Assassin" },
     { 610, "Dark Star: Singularity" },
@@ -97,4 +98,6 @@ std::map<int, std::string> queue_name_map{
     { 2000, "Tutorial 1" },
     { 2010, "Tutorial 2" },
     { 2020, "Tutorial 3" },
+    { 2300, "Brawl" },
+    { 2400, "ARAM: Mayhem" },
 };
